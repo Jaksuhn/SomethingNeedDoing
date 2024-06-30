@@ -16,7 +16,7 @@ VBM/BMR (bmr has slash commands for following)
 RS/RSR (is RS still being updated?)
 
 ***Few annoying problems that still exist
-none atm
+--*dont follow during combat unless non caster. will require bmr contemplation
 ]]
 
 --*****************************************************************
@@ -134,18 +134,19 @@ ini_check("version", vershun)
 --*****************************************************************
 
 ---------CONFIGURATION SECTION---------
-fren = ini_check("fren", "Fren Name")  				--can be partial as long as its unique
-fly_you_fools = ini_check("fly_you_fools", false)	--(fly and follow instead of mount and wait) usecase: you dont have multi seater of sufficient size, or you want to have multiple multiseaters with diff peopel riding diff ones.  sometimes frendalf doesnt want you to ride him and will ask you to ride yourself right up into outer space
+fren = ini_check("fren", "Fren Name")  						--can be partial as long as its unique
+fly_you_fools = ini_check("fly_you_fools", false)			--(fly and follow instead of mount and wait) usecase: you dont have multi seater of sufficient size, or you want to have multiple multiseaters with diff peopel riding diff ones.  sometimes frendalf doesnt want you to ride him and will ask you to ride yourself right up into outer space
 fool_flier = ini_check("fool_flier", "Beast with 3 backs")	--if you have fly you fools as true, which beast shall you summon?
-fulftype = ini_check("fulftype", "unchanged")			-- If you have lazyloot installed can setup how loot is handled. Leave on "unchanged" if you don't want it to set your loot settings. Other settings include need, greed, pass and of course, off
-cling = ini_check("cling", 1) 							-- Distance to cling to fren when > bistance
-maxbistance = ini_check("maxbistance", 50) 				-- Max distance from fren that we will actually chase them, so that we dont get zone hopping situations ;p
-limitpct = ini_check("limitpct", 25)					-- What percentage of life on target should we use LB at. It will automatically use LB3 if that's the cap or it will use LB2 if that's the cap
-rotationtype = ini_check("rotationtype", "Auto")		-- What RSR type shall we use?  Auto or Manual are common ones to pick. if you choose "none" it won't change existing setting.
-bossmodAI = ini_check("bossmodAI", "on")				-- do we want bossmodAI to be "on" or "off"
-feedme = ini_check("feedme", 4650)						-- eatfood, in this case itemID 4650 which is "Boiled Egg", use simpletweaks to show item IDs it won't try to eat if you have 0 of said food item
+fulftype = ini_check("fulftype", "unchanged")				-- If you have lazyloot installed can setup how loot is handled. Leave on "unchanged" if you don't want it to set your loot settings. Other settings include need, greed, pass and of course, off
+cling = ini_check("cling", 1) 								-- Distance to cling to fren when > bistance
+clingtype = ini_check("clingtype", 0)						-- Clingtype, 0 = navmesh, 1 = visland, 2 = bmr, 3 = automaton autofollow, 4 = vanilla game follow
+maxbistance = ini_check("maxbistance", 50) 					-- Max distance from fren that we will actually chase them, so that we dont get zone hopping situations ;p
+limitpct = ini_check("limitpct", 25)						-- What percentage of life on target should we use LB at. It will automatically use LB3 if that's the cap or it will use LB2 if that's the cap
+rotationtype = ini_check("rotationtype", "Auto")			-- What RSR type shall we use?  Auto or Manual are common ones to pick. if you choose "none" it won't change existing setting.
+bossmodAI = ini_check("bossmodAI", "on")					-- do we want bossmodAI to be "on" or "off"
+feedme = ini_check("feedme", 4650)							-- eatfood, in this case itemID 4650 which is "Boiled Egg", use simpletweaks to show item IDs it won't try to eat if you have 0 of said food item
 feedmeitem = ini_check("feedmeitem", "Boiled Egg")			-- eatfood, in this case the item name. for now this is how we'll do it. it isn't pretty but it will work.. for now..
-formation = ini_check("formation", true)				-- Follow in formation? If false, then it will "cling"
+formation = ini_check("formation", true)					-- Follow in formation? If false, then it will "cling"
 						--[[
 						Like this -> . so that 1 is the main tank and the party will always kind of make this formation during combat
 						8	1	5
@@ -196,11 +197,9 @@ end
 
 function can_i_lb()
     local dpsJobs = {
-        [2] = true, [4] = true, [5] = true, [7] = true, [20] = true, [22] = true, [24] = true,
+        [2]  = true, [4]  = true, [5]  = true, [7]  = true, [20] = true, [22] = true, [24] = true,
         [25] = true, [26] = true, [27] = true, [29] = true, [30] = true, [31] = true,
-        [34] = true, [35] = true, [38] = true, [39] = true--,
-        -- [41] = true, --painter
-        -- [42] = true, --voper
+        [34] = true, [35] = true, [38] = true, [39] = true, [41]
     }
     local joeb = GetClassJobId()
     return dpsJobs[joeb] or false
@@ -244,6 +243,38 @@ local function moveToFormationPosition(followerIndex, leaderX, leaderY, leaderZ,
     
     -- Example: Move follower to the calculated position
     PathfindAndMoveTo(targetX, targetY, leaderZ, false)
+end
+
+function clingmove(nemm)
+	--navmesh
+	if clingtype == 0 then
+		PathfindAndMoveTo(GetObjectRawXPos(nemm),GetObjectRawYPos(nemm),GetObjectRawZPos(nemm), false)
+	end
+	--visland
+	if clingtype == 1 then
+		yield("/visland moveto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) --* verify this is correct later when we can load dalamud
+	end
+	--bmr
+	if clingtype == 2 then
+		yield("/bmrai followtarget true") --* verify this is correct later when we can load dalamud
+		yield("/bmrai follow "..nemm) 	  --* verify this is correct later when we can load dalamud
+	end
+	if clingtype == 3 then
+		yield("/autofollow "..nemm) --* verify this is correct later when we can load dalamud
+	end
+	if clingtype == 4 then
+		--we only doing this silly method out of combat
+		if GetCharacterCondition(26) == false
+			yield("/target "..nemm) --* verify this is correct later when we can load dalamud
+			yield("/follow")
+		end
+		--if we in combat and target is nemm we will clear it becuase that may bork autotarget from RSR
+		if GetCharacterCondition(26) == true
+			if nemm == GetTargetName() then
+				ClearTarget()
+			end
+		end
+	end
 end
 
 weirdvar = 1
@@ -321,7 +352,8 @@ while weirdvar == 1 do
 					if formation == false then
 						if bistance > cling and bistance < maxbistance then
 						--yield("/target \""..fren.."\"")
-							PathfindAndMoveTo(GetObjectRawXPos(fren),GetObjectRawYPos(fren),GetObjectRawZPos(fren), false)
+							--PathfindAndMoveTo(GetObjectRawXPos(fren),GetObjectRawYPos(fren),GetObjectRawZPos(fren), false)
+							clingmove(fren) --movement func
 						end
 						yield("/wait 0.5")
 					end	
@@ -423,7 +455,8 @@ while weirdvar == 1 do
 							bistance = distance(GetPlayerRawXPos(), GetPlayerRawYPos(), GetPlayerRawZPos(), GetObjectRawXPos(fren),GetObjectRawYPos(fren),GetObjectRawZPos(fren))
 							if bistance > cling and bistance < maxbistance then
 							--yield("/target \""..fren.."\"")
-								PathfindAndMoveTo(GetObjectRawXPos(fren),GetObjectRawYPos(fren),GetObjectRawZPos(fren), false)
+								--PathfindAndMoveTo(GetObjectRawXPos(fren),GetObjectRawYPos(fren),GetObjectRawZPos(fren), false)
+								clingmove(fren) --movement func
 							end
 							yield("/wait 0.5")
 						end	
