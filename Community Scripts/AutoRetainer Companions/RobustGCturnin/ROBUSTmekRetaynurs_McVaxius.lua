@@ -163,8 +163,8 @@ function mekkitnaow()
 	yield("/pcall _CharaMakeProgress true -13 -1")
 	yield("/pcall _CharaMakeProgress true 0 0 0 Hyur 1")
 	yield("/pcall _CharaMakeProgress true -16 1")
-	--this is where it fails. it does not click the checkbox to continue. we stop for now ;p
-	yield("/pcall _CharaMakeFeature false 100") -- confirm to next step
+	
+	yield("/pcall _CharaMakeFeature false 100") -- confirm every step at once apparently haha
 end
 
 function nemmitnaow()

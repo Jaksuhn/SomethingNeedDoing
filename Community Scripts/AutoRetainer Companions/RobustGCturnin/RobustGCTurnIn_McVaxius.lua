@@ -268,7 +268,6 @@ function Final_GC_Cleaning()
 		yield("/send ESCAPE <wait.1.5>")
 		yield("/send ESCAPE <wait.1.5>")
 		yield("/wait 3")
-		--[[
 		GCrenk = GetFlamesGCRank()
 		if GetMaelstromGCRank() > GCrenk then
 			GCrenk = GetMaelstromGCRank()
@@ -278,8 +277,10 @@ function Final_GC_Cleaning()
 		end
 		SetFlamesGCRank(9)
 		SetAddersGCRank(9)
-		SetMaelstromGCRank(9)]]
-		if GCrenk < 4 then --we can go up to 4 safely if we are below it. if you put in the effort to finish GC log 1, go pop rank 5 :~D
+		SetMaelstromGCRank(9)
+		GCcheck = 4
+		if chars_fn[rcuck_count][4] == 1 then GCcheck = 10 end --if we are using delivery hack
+		if GCrenk < GCcheck then --we can go up to 4 safely if we are below it. if you put in the effort to finish GC log 1, go pop rank 5 :~D
 			--try to promote
 			yield("/wait 1")
 			yield("/target Personnel Officer")
@@ -300,7 +301,11 @@ function Final_GC_Cleaning()
 			end
 			yield("/wait 2")
 		end
-		if GCrenk < 7 and GCrenk > 4 then --if we are above 4 and below 7 we can go up to 7
+		GCcheck  = 7
+		GCcheck2 = 4
+		if chars_fn[rcuck_count][4] == 1 then GCcheck = 10 end --if we are using delivery hack
+		if chars_fn[rcuck_count][4] == 1 then GCcheck2 = 0 end --if we are using delivery hack
+		if GCrenk < GCcheck and GCrenk > GCcheck2 then --if we are above 4 and below 7 we can go up to 7
 			--try to promote
 			yield("/wait 1")
 			yield("/target Personnel Officer")
@@ -326,22 +331,28 @@ function Final_GC_Cleaning()
 		SetAddersGCRank(GCrenk)
 		SetMaelstromGCRank(GCrenk)
 		]]
-		--[[
 		--output a log of the GC ranks and your current job level to a log file stored in the SND folder
+		--yield("/echo Log output debug line 1")
 		local folderPath = os.getenv("appdata").."\\XIVLauncher\\pluginConfigs\\SomethingNeedDoing\\"
+		--yield("/echo Log output debug line 2")
 		local file = io.open(folderPath .. "GCrankLog.txt", "a")
+		--yield("/echo Log output debug line 3")
 		if file then
 			-- Write text to the file
+		--yield("/echo Log output debug line 4")
 			currentTime = os.date("*t")
+		--yield("/echo Log output debug line 5")
 			formattedTime = string.format("%04d-%02d-%02d %02d:%02d:%02d", currentTime.year, currentTime.month, currentTime.day, currentTime.hour, currentTime.min, currentTime.sec)
-			file:write(formattedTime.." - "..chars_fn[rcuck_count][1].." - Job Lv - "..GetLevel().." - GC Rank - "..GCrenk.."\n")
+		--yield("/echo Log output debug line 6")
+			file:write(formattedTime.." - "..chars_fn[rcuck_count][1].." - Adders - "..GetAddersGCRank().." - Maelstrom - "..GetMaelstromGCRank().." - Flames - "..GetFlamesGCRank().."\n")
 			-- Close the file handle
+		--yield("/echo Log output debug line 7")
 			file:close()
+		--yield("/echo Log output debug line 8")
 			yield("/echo Text has been written to '" .. folderPath .. "GCrankLog.txt'")
 		else
 			yield("/echo Error: Unable to open file for writing")
 		end
-		]]
 	end
 	
 	--limsa aetheryte
@@ -571,6 +582,7 @@ if process_players == 1 then
 					yield("/wait 4")
 				end
 			end
+			yield("/wait 4")
 		end
 		--before we dump gear lets check to see if we are on the right job or if we care about it.
 		if config_sell == 1 then
