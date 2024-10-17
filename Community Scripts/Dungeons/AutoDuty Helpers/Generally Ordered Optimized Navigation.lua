@@ -18,7 +18,7 @@ Simpletweaks -> targeting fix
 SND -> disable snd targeting
 SND -> disable addon errors
 
-Yesalready configs (maybe only the first one is needed since the rest are done via pcalls w ya off)
+Yesalready configs (maybe only the first one is needed since the rest are done via pcalls w ya off) also make sure yesalready is on :p ad turns it off sometimes (???)
 	"YesNo"
 		Return to the starting point for the Praetorium?   ※You may be unable to re-enter ongoing battles.
 		/Repair all displayed items for.*/
@@ -52,7 +52,7 @@ z1 = GetPlayerRawZPos()
 
 stopcuckingme = 0    --counter for checking whento pop duty
 imthecaptainnow = 0  --set this to 1 if its the party leader
-
+maxjiggle = 6 -- = how much time before we jiggle
 while 1 == 1 do
 --safe check ifs
 if IsPlayerAvailable() then
@@ -184,12 +184,42 @@ if type(GetCharacterCondition(34)) == "boolean" and type(GetCharacterCondition(2
 	--yield("/echo x diff"..math.abs(x1 - GetPlayerRawXPos()))
 	--check if we are stuck somewhere.
 	--first ensure we are in the duty and not in combat
+--[[
+	if GetZoneID() == 1044 and GetCharacterCondition(26) == false then --Praetorium
+		maxjiggle = 6
+		flurb = "????"
+		if GetNodeText("_ToDoList", 22, 3) == "Arrive at the command chamber: 0/1"  and GetCharacterCondition(26) == false then
+		flurb = GetNodeText("_ToDoList", 22, 3)
+		end
+		if GetNodeText("_ToDoList", 23, 3) == "Clear the command chamber: 0/1"  and GetCharacterCondition(26) == false then
+		flurb = GetNodeText("_ToDoList", 23, 3)
+		end
+		if GetNodeText("_ToDoList", 24, 3) == "Arrive at the Laboratorium Primum: 0/1"  and GetCharacterCondition(26) == false then
+		flurb = GetNodeText("_ToDoList", 24, 3)
+		end
+		if GetNodeText("_ToDoList", 25, 3) == "Clear the Laboratorium Primum: 0/1"  and GetCharacterCondition(26) == false then
+		flurb = GetNodeText("_ToDoList", 25, 3)
+		end
+		if GetNodeText("_ToDoList", 26, 3) == "Arrive on the Echelon: 0/1"  and GetCharacterCondition(26) == false then
+			maxjiggle = 20
+			flurb = GetNodeText("_ToDoList", 26, 3)
+		end
+		if GetNodeText("_ToDoList", 27, 3) == "Defeat Gaius van Baelsar: 0/1" and GetCharacterCondition(26) == false then
+			maxjiggle = 20
+			flurb = GetNodeText("_ToDoList", 27, 3)
+	--		yield("/target Shortcut")
+	--		yield("/target Gauis")
+	--		yield("/vnavmesh moveto "..GetTargetRawXPos().." "..GetTargetRawYPos().." "..GetTargetRawZPos())
+		end
+		yield("/echo Prae Duty Progress -> "..flurb)
+	end--]]
+
 	if GetCharacterCondition(34) == true and GetCharacterCondition(26) == false then
 		if math.abs(x1 - GetPlayerRawXPos()) < 3 and math.abs(y1 - GetPlayerRawYPos()) < 3 and math.abs(z1 - GetPlayerRawZPos()) < 3 then
 			yield("/echo we havent moved very much something is up ")
 			jigglecounter = jigglecounter + 1
 		end
-		if jigglecounter > 6 then --we stuck for 30+ seconds somewhere
+		if jigglecounter > maxjiggle then --we stuck for 30+ seconds somewhere
 			yield("/echo attempting to restart AD and hope for the best")
 			jigglecounter = 0
 			yield("/ad stop")
@@ -203,17 +233,18 @@ if type(GetCharacterCondition(34)) == "boolean" and type(GetCharacterCondition(2
 		end
 	end
 
-    local mytarget = GetTargetName()
-    if type(mytarget) == "string" and mytarget ~= "Phantom Gaius" then
-        local ndist = GetDistanceToObject(null)
-        local gdist = GetDistanceToObject("Phantom Gaius")
-        local deltadist = ndist - gdist
-        if (deltadist > 1 or deltadist < -1) and gdist < 100 then
-            yield("/echo target")
-            TargetClosestEnemy()
-        end
-    end
-
+	if GetZoneID() == 1044 then --Praetorium
+		local mytarget = GetTargetName()
+		if type(mytarget) == "string" and mytarget ~= "Phantom Gaius" then
+			local ndist = GetDistanceToObject(null)
+			local gdist = GetDistanceToObject("Phantom Gaius")
+			local deltadist = ndist - gdist
+			if (deltadist > 1 or deltadist < -1) and gdist < 100 then
+				yield("/echo target")
+				TargetClosestEnemy()
+			end
+		end
+	end
 	--if GetCharacterCondition(34) == false then --fix autoqueue just shitting out
 		--yield("/send U")
 	--end

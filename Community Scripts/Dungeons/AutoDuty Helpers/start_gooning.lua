@@ -5,6 +5,7 @@ while IsPlayerAvailable() == false do
 	yield("/echo waiting on player")
 	yield("/wait 1")
 end
+yield("/ad stop")
 yield("/wait 2")
 yield("/hold W <wait.2.0>")
 yield("/release W")
