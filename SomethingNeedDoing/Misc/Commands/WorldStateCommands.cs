@@ -1,4 +1,5 @@
 ﻿using Dalamud.Game.ClientState.Fates;
+using ECommons;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Game.Fate;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
@@ -34,6 +35,7 @@ public class WorldStateCommands
     }
 
     public int GetZoneID() => Svc.ClientState.TerritoryType;
+    public string GetZoneName(uint zoneID) => Svc.Data.GetExcelSheet<TerritoryType>()?.FirstOrDefault(t => t.RowId == zoneID)?.PlaceName.ToString() ?? "";
 
     public unsafe float GetFlagXCoord() => AgentMap.Instance()->FlagMapMarker.XFloat;
     public unsafe float GetFlagYCoord() => AgentMap.Instance()->FlagMapMarker.YFloat;
@@ -179,5 +181,28 @@ public class WorldStateCommands
         }
 
         return null;
+    }
+
+    public List<uint> GetAetheryteList() => Svc.AetheryteList.Select(x => x.AetheryteId).ToList();
+    public List<uint> GetAetherytesInZone(uint zoneID) => Svc.AetheryteList.Where(x => x.TerritoryId == zoneID).Select(x => x.AetheryteId).ToList();
+    public string GetAetheryteName(uint aetheryteID) => Svc.AetheryteList.FirstOrDefault(x => x.AetheryteId == aetheryteID)?.AetheryteData.GameData?.PlaceName.Value?.Name ?? string.Empty;
+    public float GetAetheryteRawXPos(uint aetheryteID)
+    {
+        var pos = GenericHelpers.FindRow<MapMarker>(m => m?.DataType == 3 && m.DataKey.Row == aetheryteID)?.X;
+        if (pos == null) return 0f;
+        else return ConvertMapMarkerToRawPosition(pos.Value);
+    }
+    public float GetAetheryteRawYPos(uint aetheryteID)
+    {
+        var pos = GenericHelpers.FindRow<MapMarker>(m => m?.DataType == 3 && m.DataKey.Row == aetheryteID)?.Y;
+        if (pos == null) return 0f;
+        else return ConvertMapMarkerToRawPosition(pos.Value);
+    }
+
+    private static float ConvertMapMarkerToRawPosition(int pos, float scale = 100f)
+    {
+        var num = scale / 100f;
+        var rawPosition = ((float)(pos - 1024.0) / num);
+        return rawPosition;
     }
 }
