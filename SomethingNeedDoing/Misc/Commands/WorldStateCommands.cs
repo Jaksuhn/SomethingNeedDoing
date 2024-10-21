@@ -1,4 +1,5 @@
 ﻿using Dalamud.Game.ClientState.Fates;
+using ECommons;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Game.Fate;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
@@ -34,6 +35,7 @@ public class WorldStateCommands
     }
 
     public int GetZoneID() => Svc.ClientState.TerritoryType;
+    public string GetZoneName(uint zoneID) => Svc.Data.GetExcelSheet<TerritoryType>()?.FirstOrDefault(t => t.RowId == zoneID)?.PlaceName.ToString() ?? "";
 
     public unsafe float GetFlagXCoord() => AgentMap.Instance()->FlagMapMarker.XFloat;
     public unsafe float GetFlagYCoord() => AgentMap.Instance()->FlagMapMarker.YFloat;

@@ -39,6 +39,7 @@ internal class QuestCommands
     }
 
     public unsafe bool IsQuestAccepted(ushort id) => QuestManager.Instance()->IsQuestAccepted(id);
+    public unsafe List<uint> GetAcceptedQuests() => Svc.Data.GetExcelSheet<Quest>(Svc.ClientState.ClientLanguage)!.Where(x => IsQuestAccepted((ushort)x.RowId)).Select(x => x.RowId).ToList();
     public unsafe bool IsQuestComplete(ushort id) => QuestManager.IsQuestComplete(id);
     public unsafe byte GetQuestSequence(ushort id) => QuestManager.GetQuestSequence(id);
 
@@ -52,6 +53,8 @@ internal class QuestCommands
         }
         return matchingRows.Count > 0 ? Svc.Data.GetExcelSheet<Quest>(Svc.ClientState.ClientLanguage)!.GetRow((uint)matchingRows.First().i)!.RowId : null;
     }
+
+    public string GetQuestAlliedSociety(uint id) => Svc.Data.GetExcelSheet<Quest>(Svc.ClientState.ClientLanguage)!.FirstOrDefault(x => x.RowId == id)?.BeastTribe.Value?.Name ?? "";
 
     public unsafe MonsterNoteRankInfo GetMonsterNoteRankInfo(int index) => MonsterNoteManager.Instance()->RankData[index];
 
