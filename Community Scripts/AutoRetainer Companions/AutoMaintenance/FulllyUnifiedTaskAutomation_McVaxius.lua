@@ -554,6 +554,7 @@ if wheeequeheeheheheheheehhhee == 0 then
 			yield("/li home")
 			CharacterSafeWait()
 			return_fc_entrance() --does the same thing just enters target
+			open_house_door() --opens the door to house
 			CharacterSafeWait()
 			loggabunga("FUTA_", logfile_differentiator.." - Home Visit Executed by -> "..FUTA_processors[hoo_arr_weeeeee][1][1])
 			zungazunga()
