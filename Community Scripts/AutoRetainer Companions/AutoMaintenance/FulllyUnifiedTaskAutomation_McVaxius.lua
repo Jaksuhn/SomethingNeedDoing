@@ -130,7 +130,7 @@ if automarketfix ~= "no" then
 	yield("/wait 2")
 	yield("/xlenableprofile "..automarketfix)
 	--]]
-	yield("/am stop ") --this is all we need to stop the bells from being inoperable hahah this is it hahahahahah
+	--yield("/am stop ") --this is all we need to stop the bells from being inoperable hahah this is it hahahahahah --deprecated i think
 	yield("/automarket stop ") --this is all we need to stop the bells from being inoperable hahah this is it hahahahahah
 end
 --------------------------
@@ -554,6 +554,7 @@ if wheeequeheeheheheheheehhhee == 0 then
 			yield("/li home")
 			CharacterSafeWait()
 			return_fc_entrance() --does the same thing just enters target
+			open_house_door() --opens the door to house
 			CharacterSafeWait()
 			loggabunga("FUTA_", logfile_differentiator.." - Home Visit Executed by -> "..FUTA_processors[hoo_arr_weeeeee][1][1])
 			zungazunga()

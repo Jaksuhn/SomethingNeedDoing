@@ -1,3 +1,16 @@
+--[[
+Yesalready configs
+"YesNo"
+	/Repair all displayed items for.*/
+	/Embark to the.*/
+"Lists"
+	/Register to board.*/
+	/Retire to an inn room.*/
+"Bothers"
+	[x] Contents Finder Confirm  (auto confirm queueing)
+
+--]]
+
 function fishing()  
 	yield("/echo Load -> "..FUTA_processors[lowestID][1][1])
 	

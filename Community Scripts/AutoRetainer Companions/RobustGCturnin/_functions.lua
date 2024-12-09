@@ -383,7 +383,7 @@ end
 function return_to_fc()
 	--yield("/tp Estate Hall") --old way
 	--yield("/tp Estate Hall (Free Company)") --new way notice the brackets
-	yield("/li fc") --new way notice the brackets --this also respects house regisrtations in lifestream
+	yield("/li fc") --this also respects house regisrtations in lifestream
 	yield("/wait 1")
 	--yield("/waitaddon Nowloading <maxwait.15>")
 	ZoneTransition()
@@ -447,16 +447,16 @@ function return_fc_entrance()
 	double_check_nav(GetTargetRawXPos(),GetTargetRawYPos(),GetTargetRawZPos())
 	visland_stop_moving()
 	yield("/target Entrance <wait.1>")
+end
 
-	--apparently this part is screwing with enabling/disabling retainers sometimes.
-	--[[
+function open_house_door()
+	yield("/target Entrance <wait.1>")
 	yield("/interact")
 	yield("/wait 1")
 	yield("/callback SelectYesno true 0")
 	yield("/interact")
 	yield("/wait 1")
 	yield("/callback SelectYesno true 0")
-	--]]
 end
 
 function return_fc_near_bell()
@@ -676,6 +676,7 @@ function try_to_buy_fuel(restock_amt)
 			buyamt = restock_amt - curFuel
 		end
 		yield("/callback FreeCompanyCreditShop false 0 0u "..buyamt.."u") 
+		yield("/wait 0.5")
 		yield("/callback SelectYesno true 0")
 		yield("/wait 1")
 		--yield("/callback SelectYesno true 0")

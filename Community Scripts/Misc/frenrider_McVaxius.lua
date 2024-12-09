@@ -260,6 +260,11 @@ function moveToFormationPosition(followerIndex, leaderX, leaderY, leaderZ, leade
 end
 
 function clingmove(nemm)
+	if GetTargetName() == "Vault Door" then --we in a treasure map dungeon and need to click the door without following the fren
+		yield("/interact")
+		yield("/wait 5")
+		return --don't do the other stuff until we have opened the door
+	end
 	--jump if we are mounted and below the leader by 10 yalms
 	if (GetObjectRawYPos(nemm) - GetPlayerRawYPos()) > 9 and GetCharacterCondition(4) == true then
 		yield("/gaction jump")
