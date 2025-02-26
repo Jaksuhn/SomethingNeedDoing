@@ -257,9 +257,11 @@ end
 function WalkToGC()
     if GetPlayerGC() == 1 then --toilet
         if GetZoneID() ~= 128 then
+			yield("/li limsa")
 			yield("/li The Aftcastle") 
 		    ZoneTransition()
-			while GetZoneID() ~= 128 do  --sometimes things get stuck in limsa this should solve it.
+			while GetZoneID() ~= 128 do  --sometimes things get stuck in limsa or pre-limsa this should solve it.
+				yield("/li limsa")
 				visland_stop_moving()
 				yield("/li The Aftcastle") 
 				ZoneTransition()
@@ -568,25 +570,34 @@ function enter_workshop()
 	yield("/wait 1")
 	fcPoints = string.gsub(GetNodeText("FreeCompany", 15),"",""):gsub(",", "")
 	--]]
-	--enter house
-	yield("/wait 0.5")
-	yield("/target Entrance")
-	yield("/wait 0.5")
-	yield("/interact")
-	yield("/wait 5")
-	--enter workshop
-	yield("/target \"Entrance to Additional Chambers\"")
-	--check to make sure we actually targeted the door to additional rooms.
-	if GetTargetName() == "Entrance to Additional Chambers" then
+
+	--workshop ids gob 424, shiro 653, mist 423, emp 984, lav 425
+	attempts = 0 --we will do a max of 5 attempts - and if we are still not inside, we will end SND entirely so it doesnt get caught in buy loop after.
+    zoneczec = GetZoneID()
+	
+	while zoneczec ~= 424 and zoneczec ~= 425 and zoneczec ~= 423 and zoneczec ~= 653 and zoneczec ~= 984 and attempts < 5 do
+		--attempt to enter house
 		yield("/wait 0.5")
-		yield("/lockon")
-		yield("/automove")
-		visland_stop_moving()
+		yield("/target Entrance")
+		yield("/wait 0.5")
 		yield("/interact")
-		yield("/wait 1")
-		yield("/callback SelectString true 0")
 		yield("/wait 5")
-	end
+		--attemmpt to enter workshop
+		yield("/target \"Entrance to Additional Chambers\"")
+		--check to make sure we actually targeted the door to additional rooms.
+		if GetTargetName() == "Entrance to Additional Chambers" then
+			yield("/wait 0.5")
+			yield("/lockon")
+			yield("/automove")
+			visland_stop_moving()
+			yield("/interact")
+			yield("/wait 1")
+			yield("/callback SelectString true 0")
+			yield("/wait 5")
+		end
+		attempts = attempts + 1
+		zoneczec = GetZoneID()
+	end	
 end
 
 function clean_inventory()
@@ -659,52 +670,84 @@ function getRandomNumber(min, max)
   return math.random(min,max)
 end
 
+function round(n)
+  return math.floor(n + 0.5)
+end
+
 function try_to_buy_fuel(restock_amt)
-	--target mammet
-	yield("/wait 5")
-	yield("/target mammet")
-	yield("/wait 0.5")
-	yield("/lockon")
-	yield("/automove")
-	visland_stop_moving()
-	--open mammet menu
-	yield("/automove off")
-	yield("/interact")
-	yield("/wait 2")
-	yield("/callback SelectIconString true 0")
-	yield("/wait 2")
-	--buy exactly restock_amt final value for fuel
-	--grab current fuel total
-	curFuel = GetItemCount(10155)
-	oldFuel = curFuel + 1
-	buyfail = 0 --counter
-	while curFuel < restock_amt do
-		buyamt = 99 --this can be set to 231u if you want but i wouldn't recommend it as it shows on lodestone
-		if (restock_amt - curFuel) < 99 then
-			buyamt = restock_amt - curFuel
-		end
-		yield("/callback FreeCompanyCreditShop false 0 0u "..buyamt.."u") 
+    zoneczec = GetZoneID()
+	--only try to actually buy fuel if we are in the workshop
+	if zoneczec == 424 or zoneczec == 425 or zoneczec == 423 or zoneczec == 653 or zoneczec == 984 then
+		--target mammet
+		yield("/wait 5")
+		yield("/target mammet")
 		yield("/wait 0.5")
-		if IsAddonReady("SelectYesno") then yield("/callback SelectYesno true 0") end
-		yield("/wait 1")
-		--if IsAddonReady("SelectYesno") then yield("/callback SelectYesno true 0") end
-		oldFuel = curFuel
+		yield("/lockon")
+		yield("/automove")
+		visland_stop_moving()
+		--open mammet menu
+		yield("/automove off")
+		yield("/interact")
+		yield("/wait 2")
+		yield("/callback SelectIconString true 0")
+		yield("/wait 2")
+		--buy exactly restock_amt final value for fuel
+		--grab current fuel total
 		curFuel = GetItemCount(10155)
-		yield("/echo Current Fuel -> "..curFuel.." Old Fuel -> "..oldFuel)
-		if oldFuel < curFuel then
-			buyfail = 0
+		oldFuel = curFuel + 1
+		buyfail = 0 --counter
+
+		--get and set FC points
+		yield("/freecompanycmd <wait.1>")
+		fcpoynts = GetNodeText("FreeCompany", 15)
+		clean_fcpoynts = fcpoynts:gsub(",", "")
+		numeric_fcpoynts = tonumber(clean_fcpoynts)
+		
+		restock_amt = restock_amt - curFuel
+		if numeric_fcpoynts < 100 then
+			yield("/echo We don't have enough FC points to even buy 1 tank of Fuel")
+			loggabunga("FUTA_"," - Not enough FC points to buy fuel -> "..FUTA_processors[hoo_arr_weeeeee][1][1])
 		end
-		if oldFuel == curFuel then
-			buyfail = buyfail + 1
-			yield("/echo We might be out of FC points ?")
-			if buyfail > 3 then
-				curFuel = restock_amt
-				yield("/echo we ran out of FC points before finishing our purchases :(")
+		while numeric_fcpoynts > 100 and GetItemCount(10155) < restock_amt do --can we buy at least 1 fuel tank?
+				buyamt = 99
+				if numeric_fcpoynts < 9900 then
+					buyamt = round(numeric_fcpoynts / 100)
+				end
+				numeric_fcpoynts = numeric_fcpoynts - (buyamt * 100)
+				yield("/echo Attempting to buy "..buyamt.." Fuel Tanks")
+				yield("/callback FreeCompanyCreditShop false 0 0u "..buyamt.."u") 
+				yield("/wait 1")
+	--[[ --this is obselete now we have the FC point amount
+			while curFuel < restock_amt do
+				buyamt = 99 --this can be set to 231u if you want but i wouldn't recommend it as it shows on lodestone
+				if (restock_amt - curFuel) < 99 then
+					buyamt = restock_amt - curFuel
+				end
+				yield("/callback FreeCompanyCreditShop false 0 0u "..buyamt.."u") 
+				yield("/wait 0.5")
+				if IsAddonReady("SelectYesno") then yield("/callback SelectYesno true 0") end
+				yield("/wait 1")
+				--if IsAddonReady("SelectYesno") then yield("/callback SelectYesno true 0") end
+				oldFuel = curFuel
+				curFuel = GetItemCount(10155)
+				yield("/echo Current Fuel -> "..curFuel.." Old Fuel -> "..oldFuel)
+				if oldFuel < curFuel then
+					buyfail = 0
+				end
+				if oldFuel == curFuel then
+					buyfail = buyfail + 1
+					yield("/echo We might be out of FC points ?")
+					if buyfail > 3 then
+						curFuel = restock_amt
+						yield("/echo we ran out of FC points before finishing our purchases :(")
+					end
+				end
 			end
+	--]]
+			yield("/echo We now have "..GetItemCount(10155).." Ceruelum Fuel Tanks")
 		end
+		ungabunga()
 	end
-	yield("/echo We now have "..GetItemCount(10155).." Ceruelum Fuel Tanks")
-	ungabunga()
 end
 
 

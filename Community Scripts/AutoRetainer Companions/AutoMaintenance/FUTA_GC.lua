@@ -19,6 +19,7 @@ config_sell   = 0	--0=dont do anything,1=change char setting to not give dialog 
 nnl			  = 1   --leave the novicenetwork
 movementtype  = 0   --0 = vnavmesh, 1 = visland. many things wont work with visland mode. its there as emergency for cleaning only.
 open_coffers  = 1	--0=no,1=yes. do we try to open coffers before doing a turnin round. (will iterate through the list of items).
+fcpoint_min   = 500000 --the min fc points required to buy fc buffs. i set it to 500k default so you always have some fc points for fuel
 ----------------------
 --Refueling Configs --
 ----------------------
@@ -133,7 +134,7 @@ function Final_GC_Cleaning()
 		buymax = 15
 		search_boof = "Seal Sweetener II"
 		yield("/freecompanycmd <wait.1>")
-		while GetStatusTimeRemaining(414) == 0 and numeric_fcpoynts > 7000 and GetItemCount(1) > 16000 do
+		while GetStatusTimeRemaining(414) == 0 and numeric_fcpoynts > fcpoint_min and GetItemCount(1) > 16000 do
 			--fire off the buff if they exist
 			yield("/echo FC Seal Buff II")
 			--yield("/callback FreeCompanyAction false 1 0u <wait.1>")

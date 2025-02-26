@@ -31,14 +31,9 @@ lazyloot plugin (if your doing anything other than fates)
 VBM/BMR (bmr has slash commands for following and more modules)
 RSR
 
-***Few annoying problems that still exist
-*dont follow during combat unless non caster. will require bmr contemplation - seems bmr has contemplated it with distance command will consider adding new setting for this :~D
-
+***Few annoying problems that still exist and some thoughts
 *how do we change instances #s maybe custom chat commands? lifestream /li # works. now to add nodetext scanning for group. also have to use target and lockon until lim fixes /li x without los
 	this is insanely buggy and perhaps crashy.. nodetext scanning too fast will break things
-
-*it still doesnt follow in some weird cases
-	figured this out. if the party leader doesnt enter zone first, the other party members may fail to recalibrate to follow
 
 *lazyloot is a toggle not on or off so you have to turn it on yourself
 
@@ -52,8 +47,6 @@ reason is i wanted to smartly auto equip xp gear based on your current synced le
 I will do it a bit later once i uhh. make a lookup table for this trash here:
 0123456789
 
-
-*some people have incorrect auto interaction settings in pandora.. next time im playing actively ill add a new config option for that to set or not set the interaction settings.
 ]]
 
 --*****************************************************************
@@ -90,27 +83,31 @@ ini_check("version", vershun)
 --*****************************************************************
 
 ---------CONFIGURATION SECTION---------
-fren = ini_check("fren", "Fren Name")  						--can be partial as long as its unique
-fly_you_fools = ini_check("fly_you_fools", false)			--(fly and follow instead of mount and wait) usecase: you dont have multi seater of sufficient size, or you want to have multiple multiseaters with diff peopel riding diff ones.  sometimes frendalf doesnt want you to ride him and will ask you to ride yourself right up into outer space
-fool_flier = ini_check("fool_flier", "Beast with 3 backs")	--if you have fly you fools as true, which beast shall you summon?
+fren = ini_check("fren", "Fren Name")  						-- can be partial as long as its unique
+fly_you_fools = ini_check("fly_you_fools", false)			-- (fly and follow instead of mount and wait) usecase: you dont have multi seater of sufficient size, or you want to have multiple multiseaters with diff peopel riding diff ones.  sometimes frendalf doesnt want you to ride him and will ask you to ride yourself right up into outer space
+fool_flier = ini_check("fool_flier", "Beast with 3 backs")	-- if you have fly you fools as true, which beast shall you summon? the precise name with correct capitalization such as "Company Chocobo" "Behemoth" etc
 fulftype = ini_check("fulftype", "unchanged")				-- If you have lazyloot installed AND enabled (has to be done manually as it only has a toggle atm) can setup how loot is handled. Leave on "unchanged" if you don't want it to set your loot settings. Other settings include need, greed, pass
 cling = ini_check("cling", 1) 								-- Distance to cling to fren when > bistance
 force_gyasahl = ini_check("force_gyasahl", false) 	   		-- force gysahl green usage . maybe cause problems in towns with follow
 clingtype = ini_check("clingtype", 0)						-- Clingtype, 0 = navmesh, 1 = visland, 2 = bmr follow leader, 3 = automaton autofollow, 4 = vanilla game follow
 clingtypeduty = ini_check("clingtypeduty", 2)				-- do we need a diff clingtype in duties? use same numbering as above 
-follow_in_combat = ini_check("follow_in_combat", 0)		-- 0 = dont follow the leader while in combat, 1 = follow the leader while in combat
+follow_in_combat = ini_check("follow_in_combat", 0)			-- 0 = dont follow the leader while in combat, 1 = follow the leader while in combat
 maxbistance = ini_check("maxbistance", 50) 					-- Max distance from fren that we will actually chase them, so that we dont get zone hopping situations ;p
+maxAIdistance = ini_check("maxAIdistance", 2.6) 			-- distance to be from targets in AI mode with BMR, i recommend 2.6 for melee and 10-15 for casters/healers/ranged
 limitpct = ini_check("limitpct", -1)						-- What percentage of life on target should we use LB at. It will automatically use LB3 if that's the cap or it will use LB2 if that's the cap, -1 disables it
 rotationplogon = ini_check("rotationplogon", "RSR")			-- Which plogon for rotations? valid options are BMR, VBM, RSR
 autorotationtype = ini_check("autorotationtype", "xan")		-- If we are using BossMod rotation, what preset name shall we use? use "none" to manually configure it yourself.  keep in mind you have to make the rotation and name it in the first place.  "xan" is what i call mine
 rotationtype = ini_check("rotationtype", "Auto")			-- What RSR type shall we use?  Auto or Manual are common ones to pick. if you choose "none" it won't change existing setting.
 bossmodAI = ini_check("bossmodAI", "on")					-- do we want bossmodAI to be "on" or "off"
 xpitem = ini_check("xpitem", 0)								-- xp item - attemp to equip whenever possible azyma_earring = 41081 btw, if this value is 0 it won't do anything
+repair = ini_check("repair", 0)								-- 0 = no, 1 = self repair always, 2 = repair if we are in an inn using the inn npc, dont use option 2 unless you are leaving your char in the inn perpetually
+tornclothes = ini_check("tornclothes", 0)					-- if we are repairing what pct to repair at
 feedme = ini_check("feedme", 4650)							-- eatfood, in this case itemID 4650 which is "Boiled Egg", use simpletweaks to show item IDs it won't try to eat if you have 0 of said food item
 feedmeitem = ini_check("feedmeitem", "Boiled Egg")			-- eatfood, in this case the item name. for now this is how we'll do it. it isn't pretty but it will work.. for now..
+companionstrat = ini_check("companionstrat", "Free Stance") -- chocobo strat to use . Valid options are: "Follow", "Free Stance", "Defender Stance", "Healer Stance", "Attacker Stance"
 --feedmeitem = ini_check("feedmeitem", "Baked Eggplant<hq>")-- eatfood, in this case the item name add a <hq> at the end if you want it to be hq. for now this is how we'll do it. it isn't pretty but it will work.. for now..
 timefriction = ini_check("timefriction", 1)					-- how long to wait between "tics" of the main loop? 1 second default. smaller values will have potential crashy / fps impacts.
-formation = ini_check("formation", false)					-- Follow in formation? If false, then it will "cling"
+formation = ini_check("formation", false)					-- Follow in formation? If false, then it will "cling", valid values are true or false
 						--[[
 						Like this -> . so that 1 is the main tank and the party will always kind of make this formation during combat
 						8	1	5
@@ -155,9 +152,11 @@ yield("/echo Starting fren rider")
 --yield("/target \""..fren.."\"")
 yield("/wait 0.5")
 --yield("/mk cross <t>")
+--yield("/xldisableplugin AutoDuty")  --this will cause grief if it is enabled
 
 yield("/vbmai "..bossmodAI)
 yield("/bmrai "..bossmodAI)
+yield("/bmrai maxdistancetarget "..maxAIdistance)
 
 --rotation handling
 function rhandling()
@@ -282,7 +281,16 @@ function clingmove(nemm)
 	if (follow_in_combat == 1 and GetCharacterCondition(26) == true) or GetCharacterCondition(26) == false then
 		allowmovement = 1
 	end
+	if allowmovement == 0 and GetCharacterCondition(26) == true then
+		yield("/vnav stop")
+	end
 	if allowmovement == 1 then
+		--sub-area-transition-hack-while-in-duty
+		if bistance > 20 and GetCharacterCondition(34) == true then --maybe we went through subarea transition in a duty?
+			yield("/echo "..nemm.." is kind of far - lets just forge ahead a bit just in case")
+			yield("/hold W <wait.3.0>")
+			yield("/release W")
+		end
 		--navmesh
 		if zclingtype == 0 then
 			--DEBUG
@@ -352,6 +360,10 @@ zoi = {
 1043,--meridianum
 171,--dzemael
 1041,--brayflox
+1040,--hawk tua manner
+1036,--cuckstasha
+434,--busk bigil
+1113,--xelphatol
 1245--halatali
 }
 
@@ -455,7 +467,9 @@ while weirdvar == 1 do
 				--continually try to dismount
 				--bmr follow off.
 				yield("/bmrai follow slot1")
-				yield("/ac dismount")
+				if GetZoneID() ~= 1044 then
+					yield("/ac dismount")
+				end
 				yield("/wait 0.5")
 				rhandling()
 			end
@@ -576,6 +590,66 @@ while weirdvar == 1 do
 				--the code block that got this all started haha
 				--follow and mount fren
 				if GetCharacterCondition(26) == false then --not in combat
+					--process repair stuff
+					if repair > 0 then
+						if repair == 1 then
+							if NeedsRepair(tornclothes) and GetItemCount(1) > 4999 and GetCharacterCondition(34) == false and GetCharacterCondition(56) == false then --only do this outside of a duty yo
+								yield("/ad repair")
+								goatcounter = 0
+								for goatcounter=1,30 do
+									yield("/wait 0.5")
+									yield("/callback _Notification true 0 17")
+									yield("/callback ContentsFinderConfirm true 9")
+								end
+								yield("/ad stop")
+							end
+						end
+						if repair == 2 then
+							--JUST OUTSIDE THE INN REPAIR
+							if NeedsRepair(tornclothes) and GetItemCount(1) > 4999 and GetCharacterCondition(34) == false and GetCharacterCondition(56) == false then --only do this outside of a duty yo
+								yield("/ad repair")
+								goatcounter = 0
+								for goatcounter=1,30 do
+									yield("/wait 0.5")
+									yield("/callback _Notification true 0 17")
+									yield("/callback ContentsFinderConfirm true 9")
+								end
+								yield("/ad stop")
+							end
+							--reenter the inn room
+							--if (GetZoneID() ~= 177 and GetZoneID() ~= 178) and GetCharacterCondition(34) == false and NeedsRepair(50) == false then
+							if (GetZoneID() ~= 177 and GetZoneID() ~= 178 and GetZoneID() ~= 179) and GetCharacterCondition(34) == false and IsPlayerAvailable() then
+								yield("/send ESCAPE")
+								yield("/ad stop") --seems to be needed or we get stuck in repair genjutsu
+								yield("/target Antoinaut") --gridania
+								yield("/target Mytesyn")   --limsa
+								yield("/target Otopa")     --uldah
+								yield("/wait 1")
+								if type(GetCharacterCondition(34)) == "boolean" and  GetCharacterCondition(34) == false and IsPlayerAvailable() then
+									yield("/lockon on")
+									yield("/automove")
+								end
+								yield("/wait 2.5")
+								if type(GetCharacterCondition(34)) == "boolean" and  GetCharacterCondition(34) == false and IsPlayerAvailable() then
+									yield("/callback _Notification true 0 17")
+									yield("/callback ContentsFinderConfirm true 9")
+									yield("/interact")
+								end
+								yield("/wait 1")
+								if type(GetCharacterCondition(34)) == "boolean" and  GetCharacterCondition(34) == false and IsPlayerAvailable() then
+									yield("/callback _Notification true 0 17")
+									yield("/callback ContentsFinderConfirm true 9")
+									yield("/callback SelectIconString true 0")
+									yield("/callback _Notification true 0 17")
+									yield("/callback ContentsFinderConfirm true 9")
+									yield("/callback SelectString true 0")
+									yield("/wait 1")
+								end
+								--yield("/wait 8")
+								--RestoreYesAlready()
+							end
+						end					
+					end
 					if GetCharacterCondition(4) == true and fly_you_fools == true then
 						--follow the fren
 						if GetCharacterCondition(4) == true and bistance > cling and PathIsRunning() == false and PathfindInProgress() == false then
@@ -606,13 +680,17 @@ while weirdvar == 1 do
 					end
 					if GetCharacterCondition(4) == false and GetCharacterCondition(10) == false then --not mounted and not mounted2 (riding friend)
 						--chocobo stuff. first check if we can fly. if not don't try to chocobo
-						if HasFlightUnlocked() == true or force_gyasahl == true then
-							--check if chocobro is up or (soon) not!
-							if GetBuddyTimeRemaining() < 900 and GetItemCount(4868) > 0 then
-								yield("/visland stop")
-								yield("/vnavmesh stop")
-								yield("/item Gysahl Greens")
-								yield("/wait 3")
+						--actually check if we are in a sanctuary first, if true we aren't gonna try to check or do anything.
+						if InSanctuary() == false then
+							if HasFlightUnlocked() == true or force_gyasahl == true then
+								--check if chocobro is up or (soon) not!
+								if GetBuddyTimeRemaining() < 900 and GetItemCount(4868) > 0 then
+									yield("/visland stop")
+									yield("/vnavmesh stop")
+									yield("/item Gysahl Greens")
+									yield("/wait 3")
+									yield("/cac \""..companionstrat.."\"")
+								end
 							end
 						end
 						--yield("/target <cross>")

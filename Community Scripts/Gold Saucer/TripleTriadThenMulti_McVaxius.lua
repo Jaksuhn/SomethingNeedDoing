@@ -1,7 +1,6 @@
 --[[
-  Description: Run TT a bit before bed. make your own Vislands and use 1 radius for them.
-  Author: McVaxius
-  Link: https://discord.com/channels/1162031769403543643/1162799234874093661/1182415752389726280
+  Description: Run to the fortemps guy
+  requires vnavmesh and saucy
 ]]
 
 function visland_stop_moving()
