@@ -34,7 +34,7 @@ public class WorldState
     }
 
     public int GetZoneID() => Svc.ClientState.TerritoryType;
-    public string GetZoneName(uint zoneID) => GetRow<TerritoryType>(zoneID)!.Value.PlaceName.Value.ToString() ?? "";
+    public string GetZoneName(uint zoneID) => GetRow<TerritoryType>(zoneID)!.Value.PlaceName.Value.Name.ToString() ?? "";
     public unsafe float GetFlagXCoord() => AgentMap.Instance()->FlagMapMarker.XFloat;
     public unsafe float GetFlagYCoord() => AgentMap.Instance()->FlagMapMarker.YFloat;
     public unsafe float GetFlagZone() => AgentMap.Instance()->FlagMapMarker.TerritoryId;
