@@ -60,7 +60,10 @@ internal partial class MacroManager : IDisposable
 
                 State = LoopState.Running;
                 if (await ProcessMacro(macro, token))
+                {
                     macroStack.Pop().Dispose();
+                    OnMacroCompleted?.Invoke(macro.Node);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -178,6 +181,7 @@ internal partial class MacroManager : IDisposable
 
 internal sealed partial class MacroManager
 {
+    public event Action<MacroNode> OnMacroCompleted;
     public (string Name, int StepIndex)[] MacroStatus
         => macroStack
             .ToArray() // Collection was modified after the enumerator was instantiated.

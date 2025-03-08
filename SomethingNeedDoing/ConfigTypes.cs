@@ -29,6 +29,7 @@ public class MacroNode : INode
     /// Gets or sets a value indicating whether this macro should loop automatically.
     /// </summary>
     public bool CraftingLoop { get; set; } = false;
+    public bool IsPostProcess { get; set; } = false;
 
     /// <summary>
     /// Gets or sets a value indicating how many loops this macro should run if looping is enabled.

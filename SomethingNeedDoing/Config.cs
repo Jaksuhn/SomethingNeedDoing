@@ -43,7 +43,18 @@ public class Config : IEzConfig
     public int BeepCount { get; set; } = 3;
     public bool UseSNDTargeting { get; set; } = true;
 
-    public MacroNode? ARCharacterPostProcessMacro { get; set; }
+    public MacroNode? ARCharacterPostProcessMacro
+    {
+        get;
+        set
+        {
+            if (value != null)
+            {
+                value.IsPostProcess = true;
+            }
+            field = value;
+        }
+    }
     public List<ulong> ARCharacterPostProcessExcludedCharacters { get; set; } = [];
 
     public bool StopMacroIfActionTimeout { get; set; } = true;
