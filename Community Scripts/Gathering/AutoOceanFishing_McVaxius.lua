@@ -24,7 +24,7 @@ yield("/send W")
 yield("/lockon on")
 yield("/automove on <wait.2>")
 
-yield("/pinteract <wait.2>")
+yield("/interact <wait.2>")
 yield("/callback SelectString true 0")
 yield("/callback TelepotTown false 11 3u <wait.1>") -- Arcanists' Guild
 yield("/callback TelepotTown false 11 3u <wait.1>")
@@ -38,7 +38,7 @@ yield("/visland stop")
 yield("<wait.1.0>")
 
 yield("/target Dryskthota")
-yield("/pinteract <wait.2>")
+yield("/interact <wait.2>")
 yield("/wait 1")
 yield("/send ESCAPE <wait.1.5>")
 yield("/send ESCAPE <wait.1.5>")
@@ -55,7 +55,7 @@ yield("<wait.1.0>")
 
 yield("/targetnpc <wait.1>")
 yield("/lockon on")
-yield("/pinteract <wait.2>")
+yield("/interact <wait.2>")
 yield("/callback SelectString true 0")
 yield("/callback TelepotTown false 11 6u <wait.1>") -- Hawkers' Alley
 yield("/callback TelepotTown false 11 6u <wait.1>")
