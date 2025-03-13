@@ -87,15 +87,17 @@ fren = ini_check("fren", "Fren Name")  						-- can be partial as long as its un
 fly_you_fools = ini_check("fly_you_fools", false)			-- (fly and follow instead of mount and wait) usecase: you dont have multi seater of sufficient size, or you want to have multiple multiseaters with diff peopel riding diff ones.  sometimes frendalf doesnt want you to ride him and will ask you to ride yourself right up into outer space
 fool_flier = ini_check("fool_flier", "Beast with 3 backs")	-- if you have fly you fools as true, which beast shall you summon? the precise name with correct capitalization such as "Company Chocobo" "Behemoth" etc
 fulftype = ini_check("fulftype", "unchanged")				-- If you have lazyloot installed AND enabled (has to be done manually as it only has a toggle atm) can setup how loot is handled. Leave on "unchanged" if you don't want it to set your loot settings. Other settings include need, greed, pass
-cling = ini_check("cling", 1) 								-- Distance to cling to fren when > bistance
+cling = ini_check("cling", 2.6) 							-- Distance to cling to fren when > bistance
 force_gyasahl = ini_check("force_gyasahl", false) 	   		-- force gysahl green usage . maybe cause problems in towns with follow
 clingtype = ini_check("clingtype", 0)						-- Clingtype, 0 = navmesh, 1 = visland, 2 = bmr follow leader, 3 = automaton autofollow, 4 = vanilla game follow
 clingtypeduty = ini_check("clingtypeduty", 2)				-- do we need a diff clingtype in duties? use same numbering as above 
-follow_in_combat = ini_check("follow_in_combat", 0)			-- 0 = dont follow the leader while in combat, 1 = follow the leader while in combat
+follow_in_combat = ini_check("follow_in_combat", 42)		-- 0 = dont follow the leader while in combat, 1 = follow the leader while in combat, 42 = let a table decide based on job/role
+positional_in_combat = ini_check("positional_in_combat", 42)-- 0 = front, 1 = back, 2 = any, use 42 if you want a table to decide.
 maxbistance = ini_check("maxbistance", 50) 					-- Max distance from fren that we will actually chase them, so that we dont get zone hopping situations ;p
 ddistance = ini_check("ddistance", 100) 					-- DEEP DUNGEON RELATED - if your in a deep dungeon should we even follow? add this to "cling" if we are in a DD, 100 is default but still testing what is a good default.
+hcling_reset = ini_check("hcling_reset", 10) 				-- how many cycles before hcling is 0 and the user is basically forced to navmesh over to fren
 fdistance = ini_check("fdistance", 0) 						-- F.A.T.E. related - if your in a fate, add some more padding to "cling" default is 20 for now until some testing is done
-maxAIdistance = ini_check("maxAIdistance", 2.6) 			-- distance to be from targets in AI mode with BMR, i recommend 2.6 for melee and 10-15 for casters/healers/ranged
+maxAIdistance = ini_check("maxAIdistance", 424242) 			-- distance to targets in combat w BMR, if you dont want to pick, use 424242, otherwise melee 2.6 and caster 10
 limitpct = ini_check("limitpct", -1)						-- What percentage of life on target should we use LB at. It will automatically use LB3 if that's the cap or it will use LB2 if that's the cap, -1 disables it
 rotationplogon = ini_check("rotationplogon", "RSR")			-- Which plogon for rotations? valid options are BMR, VBM, RSR
 autorotationtype = ini_check("autorotationtype", "xan")		-- If we are using BossMod rotation, what preset name shall we use? use "none" to manually configure it yourself.  keep in mind you have to make the rotation and name it in the first place.  "xan" is what i call mine
@@ -187,6 +189,13 @@ if fulftype ~= "unchanged" then
 	yield("/wait 1")
 	yield("/fulf "..fulftype)
 end
+
+if follow_in_combat == 1 then
+	yield("/bmrai followcombat on")
+end
+if follow_in_combat == 0 then
+	yield("/bmrai followcombat on")
+end
 ----------------
 ----INIT END----
 ----------------
@@ -196,6 +205,7 @@ end
 ----------------
 are_we_DD = 0 --no we aren't in a deep dungeon
 hcling = cling --harmonized cling for situations where we want to modify the cling value temporarily such as deep dungeon or fates
+hcling_counter = 0 --counter for hcling_reset
 weirdvar = 1
 shartycardinality = 2 -- leader
 partycardinality = 2 -- me
@@ -220,6 +230,36 @@ zoi = {
 1063,--snowcuck
 1113,--xelphatol --problem. fix later  dont wanna interact with lifts
 1245--halatali
+}
+
+job_configs = {
+--jobID,dist,followincombat 0 or 1,positional,name
+{19,2.6,1,0,"Paladin"},
+{21,2.6,1,0,"Warrior"},
+{32,2.6,1,0,"Dark Knight"},
+{37,2.6,1,0,"Gunbreaker"},
+
+{20,2.6,1,1,"Monk"},
+{22,2.6,1,1,"Dragoon"},
+{30,2.6,1,1,"Ninja"},
+{34,2.6,1.1,"Samurai"},
+{39,2.6,1,1,"Reaper"},
+{31,2.6,1,1,"Viper"},
+
+{38,10,1,2,"Dancer"},
+{23,10,1,2,"Bard"},
+{31,10,1,2,"Machinist"},
+
+{25,10,1,2,"Black Mage"},
+{27,10,1,2,"Summoner"},
+{35,2.6,1,2,"Red Mage"},
+{42,10,1,2,"Pictomancer"},
+{36,10,1,2,"Blue Mage"},
+
+{24,10,1,2,"White Mage"},
+{28,10,1,2,"Scholar"},
+{33,10,1,2,"Astrologian"},
+{40,10,1,2,"Sage"}
 }
 ----------------
 ----MISC END----
@@ -251,10 +291,62 @@ function can_i_lb()
     local joeb = GetClassJobId()
     return dpsJobs[joeb] or false
 end
+-------------
+--JOB INIT---
+-------------
+goatEnjoyer = GetClassJobId() --call this again if we gonna call one of the curated funcs
 
-function am_i_ranged()
-	--*stub to be sorted out later to deal with known issue(s)
+function returnJobbu()
+	for i=1,#job_configs do
+		if goatEnjoyer == job_configs[i][1] then
+			return i
+		end
+	end
 end
+
+function returnCuratedDist()
+	return job_configs[returnJobbu()][2]
+end
+
+function returnCuratedFollow()
+	return job_configs[returnJobbu()][3]
+end
+
+function returnCuratedPosition()
+	whichP = job_configs[returnJobbu()][4]
+	if positional_in_combat < 42 then whichP = positional_in_combat end
+	beturn = "any"
+	if whichP == 0 then beturn =  "front" end
+	if whichP == 1 then beturn =  "rear" end
+	if whichP == 2 then beturn =  "any" end
+	return beturn
+end
+
+yield("/bmrai positional "..returnCuratedPosition())
+yield("/echo Turning Positional "..returnCuratedPosition().." on")
+
+function returnCuratedJob() --not used yet.
+	return job_configs[returnJobbu()][5]
+end
+
+if follow_in_combat == 42 then
+	if returnCuratedFollow() == 0 then
+		yield("/bmrai followcombat off")
+		yield("/echo Turning Follow in combat Off")
+	end
+	if returnCuratedFollow() == 1 then
+		yield("/bmrai followcombat on")
+		yield("/echo Turning Follow in combat On")
+	end
+end
+
+if maxAIdistance == 424242 then
+	maxAIdistance = returnCuratedDist()
+	yield("/echo Setting Base (non DD/F.A.T.E.) Cling to during combat -> "..maxAIdistance)
+end
+-------------
+--JOB END---
+-------------
 
 -- Function to calculate the offset based on follower index and leader's facing direction
 function calculateOffset(followerIndex, leaderRotation)
@@ -299,6 +391,7 @@ end
 function checkAREA()
 	are_we_DD = 0 --always reset this just in case
 	hcling = cling
+	hcling_counter = hcling_counter + 1
 	--check if we are in a deep dungeon
 	if IsAddonVisible("DeepDungeonMap") then
 --		if IsAddonReady("DeepDungeonMap") then
@@ -311,12 +404,17 @@ function checkAREA()
 	if IsInFate() == true then
 		hcling = cling + fdistance
 	end
+	if hcling_counter > hcling_reset then
+		hcling = cling
+		hcling_counter = 0
+	end
 end
 
 function clingmove(nemm)
 	checkAREA()
 	if GetTargetName() == "Vault Door" then --we in a treasure map dungeon and need to click the door without following the fren
-		yield("/interact")
+		--yield("/interact") --no this is dangerous
+		PandoraSetFeatureState("Auto-interact with Objects in Instances",true)
 		yield("/wait 5")
 		return --don't do the other stuff until we have opened the door
 	end
@@ -353,8 +451,10 @@ function clingmove(nemm)
 			--DEBUG
 			--yield("/echo x->"..GetObjectRawXPos(nemm).."y->"..GetObjectRawYPos(nemm).."z->"..GetObjectRawZPos(nemm))--if its 0,0,0 we are not gonna do shiiiit.
 			--PathfindAndMoveTo(GetObjectRawXPos(nemm),GetObjectRawYPos(nemm),GetObjectRawZPos(nemm), false)
-			if GetCharacterCondition(77) == false then yield("/vnav moveto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
-			if GetCharacterCondition(77) == true then yield("/vnav flyto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
+			if bistance > hcling then
+				if GetCharacterCondition(77) == false then yield("/vnav moveto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
+				if GetCharacterCondition(77) == true then yield("/vnav flyto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
+			end
 		end
 		--visland
 		if zclingtype == 1 then
@@ -668,7 +768,8 @@ while weirdvar == 1 do
 								if type(GetCharacterCondition(34)) == "boolean" and  GetCharacterCondition(34) == false and IsPlayerAvailable() then
 									yield("/callback _Notification true 0 17")
 									yield("/callback ContentsFinderConfirm true 9")
-									yield("/interact")
+									--yield("/interact")
+									PandoraSetFeatureState("Auto-interact with Objects in Instances",true)
 								end
 								yield("/wait 1")
 								if type(GetCharacterCondition(34)) == "boolean" and  GetCharacterCondition(34) == false and IsPlayerAvailable() then
