@@ -1,7 +1,18 @@
+--[[
+Changelog
+v2.0
+added DD and FATE sections and logic related to them
+added social distancing in forays and outdoor areas
+cleaned up potential crash bugs and added lots of additional cleanups
+added idle shitter emotes
+
+v1.0
+it works™
+
 --script to kind of autofollow specific person in party when not in a duty by riding their vehicule
 --meant to use when your ahh botting treasure maps or fates with alts, but playing main char manually :~D
 
---[[
+
 *repos sorted by length of string.
 https://plugins.carvel.li
 https://love.puni.sh/ment.json
@@ -82,40 +93,77 @@ ini_check("version", vershun)
 --************************** END INIZER ***************************
 --*****************************************************************
 
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
 ---------CONFIGURATION SECTION---------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+----------------------------
+---FREN / PARTY / CHOCOBO---
+----------------------------
 fren = ini_check("fren", "Fren Name")  						-- can be partial as long as its unique
 fly_you_fools = ini_check("fly_you_fools", false)			-- (fly and follow instead of mount and wait) usecase: you dont have multi seater of sufficient size, or you want to have multiple multiseaters with diff peopel riding diff ones.  sometimes frendalf doesnt want you to ride him and will ask you to ride yourself right up into outer space
 fool_flier = ini_check("fool_flier", "Beast with 3 backs")	-- if you have fly you fools as true, which beast shall you summon? the precise name with correct capitalization such as "Company Chocobo" "Behemoth" etc
 fulftype = ini_check("fulftype", "unchanged")				-- If you have lazyloot installed AND enabled (has to be done manually as it only has a toggle atm) can setup how loot is handled. Leave on "unchanged" if you don't want it to set your loot settings. Other settings include need, greed, pass
-cling = ini_check("cling", 1) 								-- Distance to cling to fren when > bistance
 force_gyasahl = ini_check("force_gyasahl", false) 	   		-- force gysahl green usage . maybe cause problems in towns with follow
-clingtype = ini_check("clingtype", 0)						-- Clingtype, 0 = navmesh, 1 = visland, 2 = bmr follow leader, 3 = automaton autofollow, 4 = vanilla game follow
+companionstrat = ini_check("companionstrat", "Free Stance") -- chocobo strat to use . Valid options are: "Follow", "Free Stance", "Defender Stance", "Healer Stance", "Attacker Stance"
+timefriction = ini_check("timefriction", 1)					-- how long to wait between "tics" of the main loop? 1 second default. smaller values will have potential crashy / fps impacts.
+hcling_reset = ini_check("hcling_reset", 10) 				-- how many "tics" before hcling is 0 and the user is basically forced to navmesh over to fren - this also handles some special logic such as DD force cling and social distancing
+idle_shitter =  ini_check("idle_shitter", "nothing") 		-- what shall we do if we are idle, valid options are "list" "nothing" or any slash command, if you choose nothing, then after x tics of being idle it will do nothing, otherwise it will pick from a list randomly or run the specific emote you chose.  if your weird and evil you can throw in a snd script here too with /pcraft run asdfasdf
+idle_shitter_tic =  ini_check("idle_shitter_tic", 10)		-- how many tics till idle shitter?
+----------------------------
+---CLING / DIST---
+----------------------------
+cling = ini_check("cling", 2.6) 							-- Distance to trigger a cling to fren when > bistance
+clingtype = ini_check("clingtype", 0)						-- Clingtype, 0 = navmesh [Default], 1 = visland, 2 = bossmod follow leader, 3 = CBT autofollow, 4 = vanilla game follow
 clingtypeduty = ini_check("clingtypeduty", 2)				-- do we need a diff clingtype in duties? use same numbering as above 
-follow_in_combat = ini_check("follow_in_combat", 0)			-- 0 = dont follow the leader while in combat, 1 = follow the leader while in combat
+socialdistancing = ini_check("socialdistancing", 5)			-- if this value is > 0 then it won't get any closer than this even if cling is lower.  The reason is to keep them from looking too much like bots.  it will consider this value only in outdoor areas, and foray areas.
 maxbistance = ini_check("maxbistance", 50) 					-- Max distance from fren that we will actually chase them, so that we dont get zone hopping situations ;p
-ddistance = ini_check("ddistance", 100) 					-- DEEP DUNGEON RELATED - if your in a deep dungeon should we even follow? add this to "cling" if we are in a DD, 100 is default but still testing what is a good default.
+ddistance = ini_check("ddistance", 100) 					-- DEEP DUNGEON RELATED - if your in a deep dungeon should we even follow? add this to "cling" if we are in a DD, 100 is default
+follow_in_combat = ini_check("follow_in_combat", 42)		-- 0 = dont follow the leader while in combat, 1 = follow the leader while in combat, 42 = let a table decide based on job/role
 fdistance = ini_check("fdistance", 0) 						-- F.A.T.E. related - if your in a fate, add some more padding to "cling" default is 20 for now until some testing is done
-maxAIdistance = ini_check("maxAIdistance", 2.6) 			-- distance to be from targets in AI mode with BMR, i recommend 2.6 for melee and 10-15 for casters/healers/ranged
-limitpct = ini_check("limitpct", -1)						-- What percentage of life on target should we use LB at. It will automatically use LB3 if that's the cap or it will use LB2 if that's the cap, -1 disables it
-rotationplogon = ini_check("rotationplogon", "RSR")			-- Which plogon for rotations? valid options are BMR, VBM, RSR
-autorotationtype = ini_check("autorotationtype", "xan")		-- If we are using BossMod rotation, what preset name shall we use? use "none" to manually configure it yourself.  keep in mind you have to make the rotation and name it in the first place.  "xan" is what i call mine
-rotationtype = ini_check("rotationtype", "Auto")			-- What RSR type shall we use?  Auto or Manual are common ones to pick. if you choose "none" it won't change existing setting.
-bossmodAI = ini_check("bossmodAI", "on")					-- do we want bossmodAI to be "on" or "off"
+formation = ini_check("formation", false)					-- Follow in formation? If false, then it will "cling", valid values are true or false - see note at bottom to see how formations work (cardinal and intercardinals)
+----------------------------
+---COMBAT / AI---
+----------------------------
+autorotationtypeDD = ini_check("autorotationtypeDD", "DD")		-- If we are using BossMod rotation, what preset name shall we use for DD
+autorotationtypeFATE = ini_check("autorotationtypeFATE", "FATE")-- If we are using BossMod rotation, what preset name shall we use for FATE
+rotationtype = ini_check("rotationtype", "Auto")				-- What RSR type shall we use?  Auto or Manual are common ones to pick. if you choose "none" it won't change existing setting.
+bossmodAI = ini_check("bossmodAI", "on")						-- do we want bossmodAI to be "on" or "off"
+positional_in_combat = ini_check("positional_in_combat", 42)	-- 0 = front, 1 = back, 2 = any, use 42 if you want a table to decide.
+maxAIdistance = ini_check("maxAIdistance", 424242) 				-- distance to targets in combat w BMR, if you dont want to pick, use 424242, otherwise melee 2.6 and caster 10
+limitpct = ini_check("limitpct", -1)							-- What percentage of life on target should we use LB at. It will automatically use LB3 if that's the cap or it will use LB2 if that's the cap, -1 disables it
+rotationplogon = ini_check("rotationplogon", "RSR")				-- Which plogon for rotations? valid options are BMR, VBM, RSR --does wrath have slash commands now? can we add it?
+autorotationtype = ini_check("autorotationtype", "xan")			-- If we are using BossMod rotation, what preset name shall we use? use "none" to manually configure it yourself.  keep in mind you have to make the rotation and name it in the first place.  "xan" is what i call mine
+----------------------------
+---EXP / FOOD / REPAIR
+----------------------------
 xpitem = ini_check("xpitem", 0)								-- xp item - attemp to equip whenever possible azyma_earring = 41081 btw, if this value is 0 it won't do anything
 repair = ini_check("repair", 0)								-- 0 = no, 1 = self repair always, 2 = repair if we are in an inn using the inn npc, dont use option 2 unless you are leaving your char in the inn perpetually
 tornclothes = ini_check("tornclothes", 0)					-- if we are repairing what pct to repair at
 feedme = ini_check("feedme", 4650)							-- eatfood, in this case itemID 4650 which is "Boiled Egg", use simpletweaks to show item IDs it won't try to eat if you have 0 of said food item
 feedmeitem = ini_check("feedmeitem", "Boiled Egg")			-- eatfood, in this case the item name. for now this is how we'll do it. it isn't pretty but it will work.. for now..
-companionstrat = ini_check("companionstrat", "Free Stance") -- chocobo strat to use . Valid options are: "Follow", "Free Stance", "Defender Stance", "Healer Stance", "Attacker Stance"
---feedmeitem = ini_check("feedmeitem", "Baked Eggplant<hq>")-- eatfood, in this case the item name add a <hq> at the end if you want it to be hq. for now this is how we'll do it. it isn't pretty but it will work.. for now..
-timefriction = ini_check("timefriction", 1)					-- how long to wait between "tics" of the main loop? 1 second default. smaller values will have potential crashy / fps impacts.
-formation = ini_check("formation", false)					-- Follow in formation? If false, then it will "cling", valid values are true or false
+----------------------------
+----------------------------
+----------------------------
+--formations note
 						--[[
 						Like this -> . so that 1 is the main tank and the party will always kind of make this formation during combat
 						8	1	5
 						3		2
 						7	4	6
 						]]
+
+
+--feedmeitem = ini_check("feedmeitem", "Baked Eggplant<hq>")-- eatfood, in this case the item name add a <hq> at the end if you want it to be hq. for now this is how we'll do it. it isn't pretty but it will work.. for now..
 --[[
 this next setting is a dud for now until i figure out how to do it
 seems like we will need to use puppetmaster.... 
@@ -142,7 +190,19 @@ exmample qolbar for telling group to go instance 2
 ]]
 -- mker = "cross" -- In case you want the other shapes. Valid shapes are triangle square circle attack1-8 bind1-3 ignore1-2
 
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
 -----------CONFIGURATION END-----------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
+---------------------------------------
 if open_on_next_load == 1 then
 	local folderPath = os.getenv("appdata") .. "\\XIVLauncher\\pluginConfigs\\SomethingNeedDoing\\"
 	os.execute('explorer "' .. folderPath .. '"')
@@ -160,6 +220,39 @@ yield("/vbmai "..bossmodAI)
 yield("/bmrai "..bossmodAI)
 yield("/bmrai maxdistancetarget "..maxAIdistance)
 
+--xBM Handling
+if rotationplogon == "VBM" then
+	if HasPlugin("BossModReborn") then
+		yield("/xldisableplugin BossModReborn")
+		repeat
+			yield("/wait 1")
+		until not HasPlugin("BossModReborn")
+		yield("/xlenableplugin BossMod")
+		repeat	
+			yield("/wait 1")
+		until HasPlugin("BossMod")
+		yield("/vbmai "..bossmodAI)
+		yield("/vbm ar set "..autorotationtype)
+		yield("/echo WE SWITCHED TO VBM FROM BMR - please review DTR bar etc.")
+	end
+end
+
+if rotationplogon == "BMR" then
+	if HasPlugin("BossMod") then
+		yield("/xldisableplugin BossMod")
+		repeat
+			yield("/wait 1")
+		until not HasPlugin("BossMod")
+		yield("/xlenableplugin BossModReborn")
+		repeat
+			yield("/wait 1")
+		until HasPlugin("BossModReborn")
+		yield("/bmrai "..bossmodAI)
+		yield("/bmr ar set "..autorotationtype)
+		yield("/echo WE SWITCHED TO BMR FROM VBM - please review DTR bar etc.")
+	end
+end
+
 --rotation handling
 function rhandling()
 	if rotationplogon == "BMR" or rotationplogon == "VBM" then
@@ -169,7 +262,7 @@ function rhandling()
 			yield("/bmr ar set "..autorotationtype)
 		end
 	end
-	if rotationplogon == "RSR" or rotationplogon == "VBM" then
+	if rotationplogon == "RSR" then
 		yield("/bmr ar toggle") --turn off Boss Mod
 		if rotationtype ~= "none" then
 			yield("/rotation "..rotationtype)
@@ -187,6 +280,13 @@ if fulftype ~= "unchanged" then
 	yield("/wait 1")
 	yield("/fulf "..fulftype)
 end
+
+if follow_in_combat == 1 then
+	yield("/bmrai followcombat on")
+end
+if follow_in_combat == 0 then
+	yield("/bmrai followcombat on")
+end
 ----------------
 ----INIT END----
 ----------------
@@ -196,15 +296,31 @@ end
 ----------------
 are_we_DD = 0 --no we aren't in a deep dungeon
 hcling = cling --harmonized cling for situations where we want to modify the cling value temporarily such as deep dungeon or fates
+hcling_counter = 0 --counter for hcling_reset
 weirdvar = 1
 shartycardinality = 2 -- leader
 partycardinality = 2 -- me
 fartycardinality = 2 --leader ui cardinality
 autotosscount = 0 --i forget its something . i think discard counter
 did_we_toggle = 0 --so we aren't setting this setting multiple times. breaking its ability to function or causing ourselves a crash maybe
+are_we_social_distancing = 0 --var controlled by a function to see if we need to socially distance on a vnavmesh follow.
+idle_shitter_counter = 0 --counter for the idle shitters
 
 pandora_interact_toggler_count = 0 -- for checking on pandora interact settings.
 pandora_interact_toggler_count = 0 -- for checking on pandora interact settings.
+
+--idle shitter list --i don't really care about this list if someone wants to improve it lmk . maybe we could have diff lists and make them an option too? --*
+idle_shitter_list = {
+"/laugh",
+"/cry",
+"/dance",
+"/tomestone",
+"/panic",
+"/wave",
+"/goodbye",
+"/yawn",
+"/photograph"
+}
 
 --zones of interact --rule - only put zones that require everyone in party to interact. if its party leader only. dont do it.
 zoi = {
@@ -220,6 +336,56 @@ zoi = {
 1063,--snowcuck
 1113,--xelphatol --problem. fix later  dont wanna interact with lifts
 1245--halatali
+}
+
+duties_with_distancing = {
+{123123,"Diadem"},
+
+{123123,"Anemos"},
+{123123,"Pagos"},
+{123123,"Pyros"},
+{123123,"Hydatos"},
+
+{123123,"Hydatos"},
+{123123,"Zadnor"},
+
+{123123,"Cosmo1"},
+{123123,"Cosmo2"},
+{123123,"Cosmo3"},
+{123123,"Cosmo4"},
+
+{123123,"Shits Triangle1"},
+{123123,"Shits Triangle2"}
+}
+
+job_configs = {
+--jobID,dist,followincombat 0 or 1,positional,name
+{19,2.6,1,0,"Paladin"},
+{21,2.6,1,0,"Warrior"},
+{32,2.6,1,0,"Dark Knight"},
+{37,2.6,1,0,"Gunbreaker"},
+
+{20,2.6,1,1,"Monk"},
+{22,2.6,1,1,"Dragoon"},
+{30,2.6,1,1,"Ninja"},
+{34,2.6,1.1,"Samurai"},
+{39,2.6,1,1,"Reaper"},
+{31,2.6,1,1,"Viper"},
+
+{38,10,1,2,"Dancer"},
+{23,10,1,2,"Bard"},
+{31,10,1,2,"Machinist"},
+
+{25,10,1,2,"Black Mage"},
+{27,10,1,2,"Summoner"},
+{35,2.6,1,2,"Red Mage"},
+{42,10,1,2,"Pictomancer"},
+{36,10,1,2,"Blue Mage"},
+
+{24,10,1,2,"White Mage"},
+{28,10,1,2,"Scholar"},
+{33,10,1,2,"Astrologian"},
+{40,10,1,2,"Sage"}
 }
 ----------------
 ----MISC END----
@@ -251,10 +417,81 @@ function can_i_lb()
     local joeb = GetClassJobId()
     return dpsJobs[joeb] or false
 end
+-------------
+--JOB INIT---
+-------------
+goatEnjoyer = GetClassJobId() --call this again if we gonna call one of the curated funcs
 
-function am_i_ranged()
-	--*stub to be sorted out later to deal with known issue(s)
+function returnJobbu()
+	for i=1,#job_configs do
+		if goatEnjoyer == job_configs[i][1] then
+			return i
+		end
+	end
 end
+
+function returnCuratedDist()
+	return job_configs[returnJobbu()][2]
+end
+
+function returnCuratedFollow()
+	return job_configs[returnJobbu()][3]
+end
+
+function returnCuratedPosition()
+	whichP = job_configs[returnJobbu()][4]
+	if positional_in_combat < 42 then whichP = positional_in_combat end
+	beturn = "any"
+	if whichP == 0 then beturn =  "front" end
+	if whichP == 1 then beturn =  "rear" end
+	if whichP == 2 then beturn =  "any" end
+	return beturn
+end
+
+yield("/bmrai positional "..returnCuratedPosition())
+yield("/echo Turning Positional "..returnCuratedPosition().." on")
+
+function returnCuratedJob() --not used yet.
+	return job_configs[returnJobbu()][5]
+end
+
+if follow_in_combat == 42 then
+	if returnCuratedFollow() == 0 then
+		yield("/bmrai followcombat off")
+		yield("/echo Turning Follow in combat Off")
+	end
+	if returnCuratedFollow() == 1 then
+		yield("/bmrai followcombat on")
+		yield("/echo Turning Follow in combat On")
+	end
+end
+
+if maxAIdistance == 424242 then
+	maxAIdistance = returnCuratedDist()
+	yield("/echo Setting Base (non DD/F.A.T.E.) Cling to during combat -> "..maxAIdistance)
+end
+-------------
+--JOB END---
+-------------
+
+-- Function to calculate tether point on the buffer circle (social distancing)
+function calculateBufferXY(meX, meZ, theyX, theyZ)
+    local dx, dz = meX - theyX, meZ - theyZ
+    local dist = math.sqrt(dx * dx + dz * dz)
+
+    if dist == 0 then
+        -- Avoid division by zero; just return original position
+        return meX, meZ
+    end
+
+    -- Normalize the direction vector and scale by socialdistancing radius
+    local scale = socialdistancing / dist
+    local calcedX = theyX + dx * scale
+    local calcedY = theyZ + dz * scale
+
+    return calcedX, calcedY
+end
+
 
 -- Function to calculate the offset based on follower index and leader's facing direction
 function calculateOffset(followerIndex, leaderRotation)
@@ -296,27 +533,99 @@ function moveToFormationPosition(followerIndex, leaderX, leaderY, leaderZ, leade
     PathfindAndMoveTo(targetX, targetY, leaderZ, false)
 end
 
+function are_we_distancing()
+	returnval = 0
+	zown = GetZoneID()
+	--are_we_social_distancing = 0
+	for i=1,#duties_with_distancing do
+		if zown == duties_with_distancing[i][1] then
+			if socialdistancing > 0 then 
+				yield("/echo We are in a social distancing area (foray) -> "..duties_with_distancing[i][2].."("..duties_with_distancing[i][1]..")")
+				returnval = 1
+				--are_we_social_distancing = 1
+			end
+		end
+	end
+	if GetCharacterCondition(34) == false and returnval == 0 then
+		returnval = 1
+		yield("/echo We aren't in a duty so we are social distancing")
+	end --obviously if we aren't in a duty we are going to be social distancing by default
+	return returnval
+end
+
 function checkAREA()
 	are_we_DD = 0 --always reset this just in case
 	hcling = cling
+	--are_we_social_distancing = 0
+	hcling_counter = hcling_counter + 1
+
+	idle_shitter_counter = idle_shitter_counter + 1
+	if GetCharacterCondition(26) == true then
+		idle_shitter_counter = 0
+	end
+
 	--check if we are in a deep dungeon
 	if IsAddonVisible("DeepDungeonMap") then
 --		if IsAddonReady("DeepDungeonMap") then
-			are_we_DD = 1
-			hcling = cling + ddistance
-			--yield("/echo we in DD -> hcling is 0> "..hcling)
+		if HasPlugin("BossMod") then
+			yield("/vbm ar set "..autorotationtypeDD) 
+			yield("/vbmai off")
+		end
+		if HasPlugin("BossModReborn") then yield("/bmrai setpresetname "..autorotationtypeDD) end
+		are_we_DD = 1
+		hcling = cling + ddistance
+		--yield("/echo we in DD -> hcling is 0> "..hcling)
+		--deep dungeon requires VBM. BMR **WILL** crash your client without any logs or crash dump
+		--[[ --supposedly fixed now
+		if HasPlugin("BossModReborn") then
+			yield("/xldisableplugin BossModReborn")
+			repeat
+				yield("/wait 1")
+			until not HasPlugin("BossModReborn")
+			yield("/xlenableplugin BossMod")
+			repeat
+				yield("/wait 1")
+			until HasPlugin("BossMod")
+			yield("/vbmai "..bossmodAI)
+			yield("/vbm ar set "..autorotationtype)
+			yield("/echo WE SWITCHED TO VBM FROM BMR - please review DTR bar etc.")
+		end
+		--]]
 --		end
 	end
 	--check if we are in a F.A.T.E.
 	if IsInFate() == true then
 		hcling = cling + fdistance
 	end
+	if idle_shitter_counter > idle_shitter_tic then  --its time to do something idle shitters!
+		idle_shitter_counter = 0
+		if not idle_shitter == "list" and not idle_shitter == "nothing" then
+			yield(idle_shitter)
+		end
+		if idle_shitter == "list" then
+			yield(idle_shitter_list[getRandomNumber(1,#idle_shitter_list)].." /motion")
+		end
+		if idle_shitter == "nothing" then
+			--yield("/echo I'm not an idle shitter")
+		end
+	end
+	if hcling_counter > hcling_reset then
+		hcling = cling
+		hcling_counter = 0
+		are_we_social_distancing = are_we_distancing()
+		if are_we_social_distancing == 1 then
+			if socialdistancing > cling then
+				hcling = socialdistancing
+			end
+		end
+	end
 end
 
 function clingmove(nemm)
 	checkAREA()
 	if GetTargetName() == "Vault Door" then --we in a treasure map dungeon and need to click the door without following the fren
-		yield("/interact")
+		--yield("/interact") --no this is dangerous
+		PandoraSetFeatureState("Auto-interact with Objects in Instances",true)
 		yield("/wait 5")
 		return --don't do the other stuff until we have opened the door
 	end
@@ -353,8 +662,18 @@ function clingmove(nemm)
 			--DEBUG
 			--yield("/echo x->"..GetObjectRawXPos(nemm).."y->"..GetObjectRawYPos(nemm).."z->"..GetObjectRawZPos(nemm))--if its 0,0,0 we are not gonna do shiiiit.
 			--PathfindAndMoveTo(GetObjectRawXPos(nemm),GetObjectRawYPos(nemm),GetObjectRawZPos(nemm), false)
-			if GetCharacterCondition(77) == false then yield("/vnav moveto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
-			if GetCharacterCondition(77) == true then yield("/vnav flyto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
+			if bistance > hcling then
+				if are_we_social_distancing == 1 then
+					--*we will do some stuff here
+					fartX,fartZ = calculateBufferXY (GetPlayerRawXPos(),GetPlayerRawZPos(),GetObjectRawXPos(nemm),GetObjectRawZPos(nemm))
+					if GetCharacterCondition(77) == false then yield("/vnav moveto "..fartX.." "..GetObjectRawYPos(nemm).." "..fartZ) end
+					if GetCharacterCondition(77) == true then yield("/vnav flyto "..fartX.." "..GetObjectRawYPos(nemm).." "..fartZ) end
+				end
+				if are_we_social_distancing == 0 then
+					if GetCharacterCondition(77) == false then yield("/vnav moveto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
+					if GetCharacterCondition(77) == true then yield("/vnav flyto "..GetObjectRawXPos(nemm).." "..GetObjectRawYPos(nemm).." "..GetObjectRawZPos(nemm)) end
+				end
+			end
 		end
 		--visland
 		if zclingtype == 1 then
@@ -435,26 +754,26 @@ counting_fartula() --we can call it before mounting because the order changes so
 function checkzoi()
 --pandora memory leak too real
 	if pandora_interact_toggler_count > 10 then
-	pandora_interact_toggler_count = 0
-	are_we_in_i_zone = 0
-	--prae, meri, dze, halatali	
-	for zzz=1,#zoi do
-		if zoi[zzz] == GetZoneID() then
-			are_we_in_i_zone = 1
+		pandora_interact_toggler_count = 0
+		are_we_in_i_zone = 0
+		--prae, meri, dze, halatali	
+		for zzz=1,#zoi do
+			if zoi[zzz] == GetZoneID() then
+				are_we_in_i_zone = 1
+			end
+			yield("/wait 0.5")
 		end
-		yield("/wait 0.5")
-	end
-	if are_we_in_i_zone == 1 and did_we_toggle == 0 then
-		PandoraSetFeatureState("Auto-interact with Objects in Instances",true)
-		did_we_toggle = 1
-		yield("/echo Turning on Pandora Auto Interact -- it will be turned off when we leave this area")
-		--yield("/echo PandoraSetFeatureState(Auto-interact with Objects in Instances,true)")
-	end
-	if are_we_in_i_zone == 0 then
-		PandoraSetFeatureState("Auto-interact with Objects in Instances",false)
-		did_we_toggle = 0
-		--yield("/echo PandoraSetFeatureState(Auto-interact with Objects in Instances,false)")
-	end
+		if are_we_in_i_zone == 1 and did_we_toggle == 0 then
+			PandoraSetFeatureState("Auto-interact with Objects in Instances",true)
+			did_we_toggle = 1
+			yield("/echo Turning on Pandora Auto Interact -- it will be turned off when we leave this area")
+			--yield("/echo PandoraSetFeatureState(Auto-interact with Objects in Instances,true)")
+		end
+		if are_we_in_i_zone == 0 then
+			PandoraSetFeatureState("Auto-interact with Objects in Instances",false)
+			did_we_toggle = 0
+			--yield("/echo PandoraSetFeatureState(Auto-interact with Objects in Instances,false)")
+		end
 	end
 end
 
@@ -526,10 +845,12 @@ while weirdvar == 1 do
 			--Food check!
 			statoos = GetStatusTimeRemaining(48)
 			---yield("/echo "..statoos)
-			if type(GetItemCount(feedme)) == "number" then
-				if GetItemCount(feedme) > 0 and statoos < 300 then --refresh food if we are below 5 minutes left
-					yield("/item "..feedmeitem)
-					yield("/echo Attempting to eat "..feedmeitem)
+			if GetCharacterCondition(26) == false then -- dont eat while fighting it will upset your stomach
+				if type(GetItemCount(feedme)) == "number" then
+					if GetItemCount(feedme) > 0 and statoos < 300 then --refresh food if we are below 5 minutes left
+						yield("/item "..feedmeitem)
+						yield("/echo Attempting to eat "..feedmeitem)
+					end
 				end
 			end
 
@@ -668,7 +989,8 @@ while weirdvar == 1 do
 								if type(GetCharacterCondition(34)) == "boolean" and  GetCharacterCondition(34) == false and IsPlayerAvailable() then
 									yield("/callback _Notification true 0 17")
 									yield("/callback ContentsFinderConfirm true 9")
-									yield("/interact")
+									--yield("/interact")
+									PandoraSetFeatureState("Auto-interact with Objects in Instances",true)
 								end
 								yield("/wait 1")
 								if type(GetCharacterCondition(34)) == "boolean" and  GetCharacterCondition(34) == false and IsPlayerAvailable() then

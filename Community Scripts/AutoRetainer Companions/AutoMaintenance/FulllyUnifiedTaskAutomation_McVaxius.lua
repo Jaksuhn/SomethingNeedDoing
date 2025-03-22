@@ -23,7 +23,7 @@ What is working?
 	Updating Inventories, FC, Chocobo saddlebags for Atools by opening them.
 		******************************************************************************************
 		*DONT ASK ABOUT THIS IN PUNISH DISC OR YOU WILL BE SENT TO THE TEASPOON DROPPING CUPBOARD -> https://www.youtube.com/watch?v=TsFGJqXnqBE
-		*Repricing items in retainers first time 100%, 11% chance after that unless you configure it differently.
+		*Repricing items in retainers first time 100%, 3% chance after that unless you configure it differently.
 		you may need to turn off retainer window bailout in /ays expert   or set it to 30 or 60 seconds.. still tbd on this
 		*DONT ASK ABOUT THIS IN PUNISH DISC OR YOU WILL BE SENT TO THE TEASPOON DROPPING CUPBOARD -> https://www.youtube.com/watch?v=TsFGJqXnqBE
 		******************************************************************************************
