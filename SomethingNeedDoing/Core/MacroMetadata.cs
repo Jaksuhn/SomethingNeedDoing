@@ -77,5 +77,5 @@ public class AddonEventConfig
     /// <summary>
     /// Gets or sets the type of addon event to monitor.
     /// </summary>
-    public AddonEvent EventType { get; set; } = AddonEvent.PostSetup;
+    public MacroAddonEvent EventType { get; set; } = MacroAddonEvent.PostSetup;
 }

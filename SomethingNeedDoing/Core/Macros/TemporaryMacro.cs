@@ -27,4 +27,12 @@ public class TemporaryMacro(string content) : MacroBase
 
     /// <inheritdoc/>
     public override MacroMetadata Metadata { get; set; } = new();
+    
+    /// <inheritdoc/>
+    public override void Delete()
+    {
+        // Temporary macros aren't stored in the configuration, so no action is needed
+        // This primarily just informs any references that the macro is no longer valid.
+        State = MacroState.Completed; // Mark as completed instead of deleted since there's no Deleted state
+    }
 }

@@ -80,6 +80,8 @@ public class Config : IEzConfig
     public List<GitMacro> GitMacros { get; set; } = [];
     #endregion
 
+    public bool HasCompletedTutorial { get; set; } = false;
+
     /// <summary>
     /// Migrates configuration from an older version.
     /// </summary>

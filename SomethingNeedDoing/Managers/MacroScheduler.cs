@@ -96,7 +96,10 @@ public class MacroScheduler : IMacroScheduler, IDisposable
                     if (!_addonEvents.ContainsKey(macro.Id))
                     {
                         _addonEvents.TryAdd(macro.Id, cfg);
-                        Svc.AddonLifecycle.RegisterListener(cfg.EventType, cfg.AddonName, OnAddonEvent);
+                        Svc.AddonLifecycle.RegisterListener(
+                            (Dalamud.Game.Addon.Lifecycle.AddonEvent)((int)cfg.EventType), 
+                            cfg.AddonName, 
+                            OnAddonEvent);
                     }
                 }
                 break;
@@ -128,7 +131,10 @@ public class MacroScheduler : IMacroScheduler, IDisposable
             case TriggerEvent.OnAddonEvent:
                 if (_addonEvents.TryGetValue(macro.Id, out var cfg))
                 {
-                    Svc.AddonLifecycle.UnregisterListener(cfg.EventType, cfg.AddonName, OnAddonEvent);
+                    Svc.AddonLifecycle.UnregisterListener(
+                        (Dalamud.Game.Addon.Lifecycle.AddonEvent)((int)cfg.EventType), 
+                        cfg.AddonName, 
+                        OnAddonEvent);
                     _addonEvents.Remove(macro.Id);
                 }
                 break;
@@ -481,7 +487,10 @@ public class MacroScheduler : IMacroScheduler, IDisposable
                         if (!_addonEvents.ContainsKey(macro.Id))
                         {
                             _addonEvents.TryAdd(macro.Id, cfg);
-                            Svc.AddonLifecycle.RegisterListener(cfg.EventType, cfg.AddonName, OnAddonEvent);
+                            Svc.AddonLifecycle.RegisterListener(
+                                (Dalamud.Game.Addon.Lifecycle.AddonEvent)((int)cfg.EventType), 
+                                cfg.AddonName, 
+                                OnAddonEvent);
                         }
                     }
                     break;
@@ -489,10 +498,13 @@ public class MacroScheduler : IMacroScheduler, IDisposable
         }
     }
 
-    private void OnAddonEvent(AddonEvent type, AddonArgs args)
+    private void OnAddonEvent(Dalamud.Game.Addon.Lifecycle.AddonEvent type, AddonArgs args)
     {
         foreach (var kvp in _addonEvents)
-            if (kvp.Value is { } cfg && cfg.EventType == type && cfg.AddonName == args.AddonName && C.GetMacro(kvp.Key) is { } macro)
+            if (kvp.Value is { } cfg && 
+                (Dalamud.Game.Addon.Lifecycle.AddonEvent)((int)cfg.EventType) == type && 
+                cfg.AddonName == args.AddonName && 
+                C.GetMacro(kvp.Key) is { } macro)
                 _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnAddonEvent, new { type, args });
     }
 

@@ -14,5 +14,5 @@ public interface ILuaModule
     /// <summary>
     /// Registers this module's functions with the Lua environment.
     /// </summary>
-    void Register(Lua lua);
+    void Register(NLua.Lua lua);
 }

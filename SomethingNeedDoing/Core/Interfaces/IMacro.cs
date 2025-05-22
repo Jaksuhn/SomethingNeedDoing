@@ -42,6 +42,11 @@ public interface IMacro
     /// Gets the metadata for the macro.
     /// </summary>
     MacroMetadata Metadata { get; }
+    
+    /// <summary>
+    /// Deletes this macro from storage.
+    /// </summary>
+    void Delete();
 }
 
 public interface IMacroInstance : IDisposable
@@ -97,4 +102,7 @@ public abstract class MacroBase : IMacro
 
     /// <inheritdoc/>
     public abstract MacroMetadata Metadata { get; set; }
+
+    /// <inheritdoc/>
+    public abstract void Delete();
 }

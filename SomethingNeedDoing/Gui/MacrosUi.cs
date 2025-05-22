@@ -1,10 +1,14 @@
-﻿using Dalamud.Interface.Utility.Raii;
+﻿using Dalamud.Interface;
+using Dalamud.Interface.Colors;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using ECommons.ImGuiMethods;
 using SomethingNeedDoing.Core.Github;
 using SomethingNeedDoing.Framework.Interfaces;
 using SomethingNeedDoing.Managers;
+using SomethingNeedDoing.Utils;
 using System.Threading.Tasks;
+using System.IO;
 
 namespace SomethingNeedDoing.Gui;
 public class MacroUI : Window
@@ -14,7 +18,6 @@ public class MacroUI : Window
     private string searchText = string.Empty;
     private bool isEditing = false;
     private string editingContent = string.Empty;
-    private MigrationPreviewWindow? _wnd;
     private readonly HashSet<string> collapsedFolders = [];
     private readonly RunningMacrosPanel _panel;
     private readonly WindowSystem _ws;
@@ -23,6 +26,7 @@ public class MacroUI : Window
     private bool showVersionHistory = false;
     private List<GitCommitInfo>? versionHistory;
     private string? newMacroContent;
+    private readonly MacroMetadataEditor _metadataEditor = new();
 
     public MacroUI(WindowSystem ws, RunningMacrosPanel panel, IMacroScheduler scheduler, GitMacroManager gitManager) : base("Macro Manager", ImGuiWindowFlags.NoScrollbar)
     {
@@ -36,116 +40,12 @@ public class MacroUI : Window
 
     public override void Draw()
     {
-        if (ImGui.Button("Import Old Config"))
-        {
-            var clipboard = ImGui.GetClipboardText();
-            if (!string.IsNullOrEmpty(clipboard))
-            {
-                _wnd = new MigrationPreviewWindow(_ws, clipboard)
-                {
-                    IsOpen = true
-                };
-                _ws.AddWindow(_wnd);
-            }
-            else
-            {
-                Svc.Chat.PrintError("No configuration data in clipboard");
-            }
-        }
-
-        ImGui.SameLine();
-
-        if (ImGui.Button("New Macro"))
-        {
-            var clipboard = ImGui.GetClipboardText();
-            if (!string.IsNullOrEmpty(clipboard))
-            {
-                try
-                {
-                    if (Uri.TryCreate(clipboard, UriKind.Absolute, out var uri) &&
-                        (uri.Host.Contains("github.com") || uri.Host.Contains("gitlab.com")))
-                    {
-                        // Handle GitHub Gists
-                        if (uri.Host == "gist.github.com")
-                        {
-                            var parts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                            if (parts.Length >= 2)
-                            {
-                                var gistId = parts[0];
-                                var fileName = parts.Length > 2 ? parts[2] : null;
-                                var repoUrl = $"https://gist.github.com/{gistId}";
-
-                                Task.Run(async () =>
-                                {
-                                    try
-                                    {
-                                        var macro = await _gitManager.AddGitMacro(repoUrl, fileName ?? "gistfile1.txt");
-                                        if (macro != null)
-                                        {
-                                            Svc.Chat.Print($"Added Git macro from Gist {gistId}");
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Svc.Chat.PrintError($"Failed to add Git macro: {ex.Message}");
-                                    }
-                                });
-                            }
-                        }
-                        // Handle regular GitHub/GitLab repositories
-                        else
-                        {
-                            var parts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                            if (parts.Length >= 3)
-                            {
-                                var owner = parts[0];
-                                var repo = parts[1];
-                                var filePath = string.Join("/", parts.Skip(2));
-                                var repoUrl = $"https://{uri.Host}/{owner}/{repo}";
-
-                                Task.Run(async () =>
-                                {
-                                    try
-                                    {
-                                        var macro = await _gitManager.AddGitMacro(repoUrl, filePath);
-                                        if (macro != null)
-                                        {
-                                            Svc.Chat.Print($"Added Git macro from {repoUrl}");
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Svc.Chat.PrintError($"Failed to add Git macro: {ex.Message}");
-                                    }
-                                });
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // It's a regular macro
-                        var macro = new ConfigMacro
-                        {
-                            Name = "New Macro",
-                            Content = clipboard
-                        };
-                        C.Macros.Add(macro);
-                        C.Save();
-                        selectedMacroId = macro.Id;
-                        selectedFolderPath = "/";
-                        Svc.Chat.Print("Added new macro");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Svc.Chat.PrintError($"Failed to add macro: {ex.Message}");
-                }
-            }
-            else
-            {
-                Svc.Chat.PrintError("No content in clipboard");
-            }
-        }
+        // Create a toolbar with improved import options
+        using var toolbarStyle = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(8, 4));
+        
+        // Toolbar is now empty since we moved both buttons
+        
+        toolbarStyle.Pop();
 
         // Draw the running macros panel at the top
         _panel.Draw();
@@ -171,9 +71,124 @@ public class MacroUI : Window
             // Filter macros based on search
         }
 
-        // Folder tree with drag and drop
-        using var _ = ImRaii.Child("FolderTree", new(-1, -1));
+        // Add Folders header with buttons
+        ImGui.Separator();
+        
+        // HEADER ROW WITH BUTTONS - complete redesign
+        
+        // First create a row to contain everything
+        ImGui.BeginGroup();
+        
+        // 1. Draw the FOLDERS text with violet color
+        ImGui.PushStyleColor(ImGuiCol.Text, ImGuiColors.DalamudViolet);
+        ImGui.Text("FOLDERS");
+        ImGui.PopStyleColor();
+        
+        // 2. Calculate spacing to place buttons on the same line
+        float headerWidth = ImGui.CalcTextSize("FOLDERS").X;
+        ImGui.SameLine(headerWidth + 10);
+        
+        // 3. Draw the buttons - use explicit styling and positioning
+        float buttonSize = ImGui.GetFrameHeight() * 0.8f;
+        Vector2 buttonDims = new Vector2(buttonSize, buttonSize);
+        
+        // New Folder button
+        ImGui.PushFont(UiBuilder.IconFont);
+        if (ImGui.Button($"{FontAwesomeIcon.FolderPlus.ToIconString()}##NewFolder", buttonDims))
+        {
+            // Create a new folder based on current selection
+            string newPath;
+            if (selectedFolderPath == "/" || string.IsNullOrEmpty(selectedFolderPath))
+            {
+                newPath = "/New Folder";
+            }
+            else
+            {
+                newPath = Path.Combine(selectedFolderPath, "New Folder").Replace("\\", "/");
+            }
+
+            // Ensure the name is unique
+            int suffix = 1;
+            string basePath = newPath;
+            while (C.GetMacrosInFolder(newPath).Any() || C.GetSubfolders(newPath).Any())
+            {
+                newPath = $"{basePath} {suffix}";
+                suffix++;
+            }
+
+            // Create folder by adding a dummy macro and then removing it
+            var dummyMacro = new ConfigMacro
+            {
+                Name = "__dummy",
+                Content = "",
+                FolderPath = newPath
+            };
+            C.Macros.Add(dummyMacro);
+            C.Macros.Remove(dummyMacro);
+            C.Save();
+
+            // Select the new folder
+            selectedFolderPath = newPath;
+            selectedMacroId = string.Empty;
+            Svc.Chat.Print($"Created new folder: {newPath}");
+        }
+        
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Create a new folder");
+        
+        // New Macro button
+        ImGui.SameLine(0, 5);
+        if (ImGui.Button($"{FontAwesomeIcon.FileMedical.ToIconString()}##NewMacro", buttonDims))
+        {
+            var clipboard = ImGui.GetClipboardText();
+            if (!string.IsNullOrEmpty(clipboard))
+            {
+                try
+                {
+                    // Create a new macro from clipboard content
+                    var macro = new ConfigMacro
+                    {
+                        Name = "New Macro",
+                        Content = clipboard,
+                        FolderPath = selectedFolderPath
+                    };
+                    C.Macros.Add(macro);
+                    C.Save();
+                    selectedMacroId = macro.Id;
+                    Svc.Chat.Print("Added new macro from clipboard");
+                }
+                catch (Exception ex)
+                {
+                    Svc.Chat.PrintError($"Failed to add macro: {ex.Message}");
+                }
+            }
+            else
+            {
+                // Create an empty macro
+                var macro = new ConfigMacro
+                {
+                    Name = "New Macro",
+                    Content = "",
+                    FolderPath = selectedFolderPath
+                };
+                C.Macros.Add(macro);
+                C.Save();
+                selectedMacroId = macro.Id;
+                Svc.Chat.Print("Added new empty macro");
+            }
+        }
+        
+        ImGui.PopFont();
+        
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Create a new macro (uses clipboard content if available)");
+            
+        ImGui.EndGroup();
+        
+        // Folder tree with drag and drop - now in a child window with explicit size
+        ImGui.BeginChild("FolderTree", new Vector2(-1, -1), true);
         DrawFolderTree();
+        ImGui.EndChild();
     }
 
     private void DrawFolderTree()
@@ -234,20 +249,34 @@ public class MacroUI : Window
             }
         }
 
-        // Show macros in the root folder
-        var rootMacros = C.GetMacrosInFolder("/");
-        foreach (var (macro, idx) in rootMacros.WithIndex())
+        // Replace the "macros in root folder" section with macro settings UI
+        ImGui.Separator();
+        
+        // Draw macro settings here
+        if (ImGui.CollapsingHeader("Macro Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            var prefix = macro is GitMacro ? "📦 " : "";
-
-            // Macro node at root level
-            if (ImGui.Selectable($"{prefix}{macro.Name}", macro.Id == selectedMacroId))
+            // Use a child window for better styling
+            using var settingsChild = ImRaii.Child("SettingsPanel", new Vector2(-1, 250), true);
+            
+            // Check if a macro is selected to show macro-specific settings
+            if (!string.IsNullOrEmpty(selectedMacroId))
             {
-                selectedMacroId = macro.Id;
-                selectedFolderPath = "/";
+                var selectedMacro = C.GetMacro(selectedMacroId);
+                if (selectedMacro != null)
+                {
+                    // Draw the macro-specific metadata editor
+                    _metadataEditor.Draw(selectedMacro);
+                }
+                else
+                {
+                    ImGui.TextColored(ImGuiColors.DalamudGrey, "Selected macro not found.");
+                }
             }
-
-            ImGuiUtils.ContextMenu($"{macro.Name}_{idx}", ("Delete", () => { macro.Delete(); if (selectedMacroId == macro.Id) selectedMacroId = string.Empty; }));
+            else
+            {
+                // No macro selected, show a message
+                ImGui.TextColored(ImGuiColors.DalamudGrey, "Select a macro to view and edit its settings.");
+            }
         }
     }
 
@@ -269,57 +298,6 @@ public class MacroUI : Window
 
         Svc.Chat.Print($"Deleted folder {folderPath} and {macrosToDelete.Count} macros");
     }
-
-    //private void DrawMacroTypePopup()
-    //{
-    //    if (macroToChangeType == null) return;
-
-    //    var macro = C.GetMacro(macroToChangeType);
-    //    if (macro == null)
-    //    {
-    //        showMacroTypePopup = false;
-    //        macroToChangeType = null;
-    //        return;
-    //    }
-
-    //    ImGui.OpenPopup("Change Macro Type");
-
-    //    if (ImGui.BeginPopupModal("Change Macro Type", ref showMacroTypePopup, ImGuiWindowFlags.AlwaysAutoResize))
-    //    {
-    //        ImGui.Text($"Change type for macro: {macro.Name}");
-    //        ImGui.Separator();
-
-    //        var currentType = macro.Type;
-    //        var newType = currentType;
-
-    //        if (ImGui.RadioButton("Native", newType == MacroType.Native))
-    //            newType = MacroType.Native;
-
-    //        ImGui.SameLine();
-
-    //        if (ImGui.RadioButton("Lua", newType == MacroType.Lua))
-    //            newType = MacroType.Lua;
-
-    //        ImGui.Separator();
-
-    //        if (ImGui.Button("Apply"))
-    //        {
-    //            macro.Type = newType;
-    //            showMacroTypePopup = false;
-    //            macroToChangeType = null;
-    //        }
-
-    //        ImGui.SameLine();
-
-    //        if (ImGui.Button("Cancel"))
-    //        {
-    //            showMacroTypePopup = false;
-    //            macroToChangeType = null;
-    //        }
-
-    //        ImGui.EndPopup();
-    //    }
-    //}
 
     private void DrawMainContent()
     {

@@ -94,3 +94,59 @@ public enum MacroControlType
     /// </summary>
     Stop
 }
+
+/// <summary>
+/// Defines addon lifecycle events that can trigger macros
+/// </summary>
+public enum MacroAddonEvent
+{
+    /// <summary>
+    /// Triggered when the addon starts being set up
+    /// </summary>
+    PreSetup,
+    
+    /// <summary>
+    /// Triggered when the addon has been set up
+    /// </summary>
+    PostSetup,
+    
+    /// <summary>
+    /// Triggered before the addon is drawn
+    /// </summary>
+    PreDraw,
+    
+    /// <summary>
+    /// Triggered after the addon is drawn
+    /// </summary>
+    PostDraw,
+    
+    /// <summary>
+    /// Triggered before the addon is updated
+    /// </summary>
+    PreUpdate,
+    
+    /// <summary>
+    /// Triggered after the addon is updated
+    /// </summary>
+    PostUpdate,
+    
+    /// <summary>
+    /// Triggered before the addon is finalized/closed
+    /// </summary>
+    PreFinalize,
+    
+    /// <summary>
+    /// Triggered after the addon is finalized/closed
+    /// </summary>
+    PostFinalize,
+    
+    /// <summary>
+    /// Triggered when the addon receives focus
+    /// </summary>
+    PreRequestFocus,
+    
+    /// <summary>
+    /// Triggered after the addon receives focus
+    /// </summary>
+    PostRequestFocus
+}
