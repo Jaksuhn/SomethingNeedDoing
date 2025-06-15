@@ -7,6 +7,7 @@ public static class HelpKeysTab
 {
     public static void DrawTab()
     {
+        using var child = ImRaii.Child(nameof(HelpKeysTab));
         ImGuiUtils.Section("Virtual Keys", () =>
         {
             ImGui.TextWrapped("Use the /send command to simulate keyboard input. This is useful for interacting with UI elements that don't have dedicated click commands.");

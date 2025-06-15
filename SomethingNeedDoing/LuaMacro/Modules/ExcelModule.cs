@@ -12,16 +12,13 @@ public class ExcelModule : LuaModuleBase
 {
     public override string ModuleName => "Excel";
 
-    private const BindingFlags PropertyFlags = BindingFlags.Public | BindingFlags.Instance |
-                                               BindingFlags.IgnoreCase | BindingFlags.DeclaredOnly;
-
     [LuaFunction("__index")]
-    public SheetWrapper? this[LuaTable table, string key] => GetSheet(key);
+    public ExcelSheetWrapper? this[LuaTable table, string key] => GetSheet(key);
 
     [LuaFunction]
-    public SheetWrapper? GetSheet(string name)
+    public ExcelSheetWrapper? GetSheet(string sheetName)
     {
-        var rawType = typeof(Addon).Assembly.GetType($"Lumina.Excel.Sheets.{name}", false, true);
+        var rawType = typeof(Addon).Assembly.GetType($"Lumina.Excel.Sheets.{sheetName}", false, true);
         if (rawType == null) return null;
 
         MethodInfo? method;
@@ -37,30 +34,19 @@ public class ExcelModule : LuaModuleBase
         }
 
         var sheet = method?.Invoke(Svc.Data, [null, null]);
-        return sheet == null ? null : new SheetWrapper(sheet, isSubRow);
+        return sheet == null ? null : new ExcelSheetWrapper(sheet, isSubRow);
     }
 
-    private static object? GetPropertyValue(object? obj, string propertyName)
+    [LuaFunction]
+    public ExcelRowWrapper? GetRow(string sheetName, uint rowId)
     {
-        var property = obj?.GetType().GetProperty(propertyName, PropertyFlags);
-        if (property == null) return null;
-        var rawValue = property.GetValue(obj);
-        if (rawValue == null) return null;
+        return GetSheet(sheetName)?.GetRow(rowId);
+    }
 
-        var type = rawValue.GetType();
-        if (type.IsAssignableTo(typeof(RowRef)))
-            return GetRowIdFromObject(rawValue);
-
-        if (rawValue is ReadOnlySeString seString)
-            return seString.ExtractText();
-
-        if (IsRowRef(type))
-            return GetRowRefValue(rawValue);
-
-        if (IsCollection(type))
-            return new CollectionWrapper(rawValue);
-
-        return rawValue;
+    [LuaFunction]
+    public ExcelRowWrapper? GetSubRow(string sheetName, uint rowId, ushort subRowId)
+    {
+        return GetSheet(sheetName)?.GetSubRow(rowId, subRowId);
     }
 
     private static uint? GetRowIdFromObject(object obj)
@@ -70,7 +56,7 @@ public class ExcelModule : LuaModuleBase
         return value is uint rowId ? rowId : null;
     }
 
-    private static RowWrapper? GetRowRefValue(object rowRef)
+    private static ExcelRowWrapper? GetRowRefValue(object rowRef)
     {
         var isValid = rowRef.GetType().GetProperty(nameof(RowRef<>.IsValid));
         if (isValid != null && isValid.GetValue(rowRef) is not true)
@@ -78,7 +64,7 @@ public class ExcelModule : LuaModuleBase
 
         var property = rowRef.GetType().GetProperty(nameof(RowRef<>.Value));
         var value = property?.GetValue(rowRef);
-        return value == null ? null : new RowWrapper(value);
+        return value == null ? null : new ExcelRowWrapper(value, GetRowIdFromObject(rowRef) ?? 0);
     }
 
     private static bool IsCollection(Type? type)
@@ -100,67 +86,74 @@ public class ExcelModule : LuaModuleBase
         return arg?.GetCustomAttribute<SheetAttribute>() != null ? arg : null;
     }
 
-    public class SheetWrapper(object sheet, bool isSubrowSheet) : IWrapper
+    public class ExcelSheetWrapper(object sheet, bool isSubrowSheet) : IWrapper
     {
         [LuaDocs]
-        public object? this[int rowId] => GetRow(rowId);
+        public object? this[uint rowId] => GetRow(rowId);
+        
+        [LuaDocs]
+        public ExcelRowWrapper? GetRow(uint rowId)
+        {
+            if (isSubrowSheet)
+                return null;
+            var method = sheet.GetType().GetMethod(nameof(ExcelSheet<>.GetRowOrDefault));
+            var row = method?.Invoke(sheet, [rowId]);
+            return row == null ? null : new ExcelRowWrapper(row, rowId);
+        }
 
         [LuaDocs]
-        public object? GetRow(int rowId)
+        public ExcelRowWrapper? GetSubRow(uint rowId, ushort subRowId)
         {
             if (!isSubrowSheet)
-            {
-                var method = sheet.GetType().GetMethod(nameof(ExcelSheet<>.GetRowOrDefault));
-                var row = method?.Invoke(sheet, [(uint)rowId]);
-
-                // return the string directly if this is an addon
-                if (row is Addon addonRow)
-                    return addonRow.Text.ExtractText();
-
-                // return the value directly if there is only 1 property
-                // uncomment for more direct access
-                // e.g "excel.actionprocstatus[1].name" instead of "excel.actionprocstatus[1].status.name"
-                //if (GetSinglePropertyValue(row) is { } value)
-                //    return value;
-
-                return row == null ? null : new RowWrapper(row);
-            }
-
-            var hasRow = sheet.GetType().GetMethod(nameof(SubrowExcelSheet<>.HasRow));
-            if (hasRow == null || hasRow.Invoke(sheet, [(uint)rowId]) is not true)
                 return null;
-            return new SubRowWrapper(sheet, (uint)rowId);
-        }
-
-        private static object? GetSinglePropertyValue(object? row)
-        {
-            var props = row?.GetType().GetProperties(PropertyFlags);
-            if (props is not { Length: 2 })
-                return null;
-            var prop = props[0].Name.Equals("RowId") ? props[1] : props[0];
-            return GetPropertyValue(row, prop.Name);
-        }
-    }
-
-    public class RowWrapper(object row) : IWrapper
-    {
-        [LuaDocs] public object? this[string propertyName] => GetPropertyValue(row, propertyName);
-    }
-
-    public class SubRowWrapper(object sheet, uint rowId) : IWrapper
-    {
-        [LuaDocs] public RowWrapper? this[int subRowId] => GetSubRow(subRowId);
-
-        [LuaDocs]
-        public RowWrapper? GetSubRow(int subRowId)
-        {
             var method = sheet.GetType().GetMethod(nameof(SubrowExcelSheet<>.GetSubrowOrDefault));
-            var row = method?.Invoke(sheet, [rowId, (ushort)subRowId]);
-            return row == null ? null : new RowWrapper(row);
+            var row = method?.Invoke(sheet, [rowId, subRowId]);
+            return row == null ? null : new ExcelRowWrapper(row, rowId, subRowId);
+        }
+
+        public override string ToString()
+        {
+            return $"{(isSubrowSheet ? nameof(SubrowExcelSheet<>) : nameof(ExcelSheet<>))}<{GetGenericSheetType(sheet.GetType())?.Name}>";
         }
     }
 
-    public class CollectionWrapper(object collection) : IWrapper
+    public class ExcelRowWrapper(object row, uint rowId, int subRowId = -1) : IWrapper
+    {
+        internal const BindingFlags PropertyFlags = BindingFlags.Public | BindingFlags.Instance |
+                                                   BindingFlags.IgnoreCase | BindingFlags.DeclaredOnly;
+
+        [LuaDocs] public object? this[string propertyName] => GetPropertyValue(row, propertyName);
+
+        private static object? GetPropertyValue(object? obj, string propertyName)
+        {
+            var property = obj?.GetType().GetProperty(propertyName, PropertyFlags);
+            if (property == null) return null;
+            var rawValue = property.GetValue(obj);
+            if (rawValue == null) return null;
+
+            var type = rawValue.GetType();
+            if (type.IsAssignableTo(typeof(RowRef)))
+                return GetRowIdFromObject(rawValue);
+
+            if (rawValue is ReadOnlySeString seString)
+                return seString.ExtractText();
+
+            if (IsRowRef(type))
+                return GetRowRefValue(rawValue);
+
+            if (IsCollection(type))
+                return new ExcelCollectionWrapper(rawValue);
+
+            return rawValue;
+        }
+
+        public override string ToString()
+        {
+            return $"{nameof(ExcelRowWrapper)}<{row.GetType().Name}>({rowId}{(subRowId >= 0 ? $",{subRowId}" : null)})";
+        }
+    }
+
+    public class ExcelCollectionWrapper(object collection) : IWrapper
     {
         [LuaDocs] public object? this[int index] => GetValue(index);
 
@@ -185,9 +178,14 @@ public class ExcelModule : LuaModuleBase
             return value;
         }
 
+        public override string ToString()
+        {
+            return $"{nameof(Collection<>)}<{collection.GetType().GetGenericArguments().FirstOrDefault()?.Name}>";
+        }
+
         private static bool CheckBounds(object collection, int index)
         {
-            var prop = collection.GetType().GetProperty(nameof(Collection<>.Count), PropertyFlags);
+            var prop = collection.GetType().GetProperty(nameof(Collection<>.Count), ExcelRowWrapper.PropertyFlags);
             if (prop == null) return false;
             if (prop.GetValue(collection) is not int count)
                 return false;
@@ -195,6 +193,6 @@ public class ExcelModule : LuaModuleBase
         }
 
         private static PropertyInfo? GetIndexer(Type type)
-            => type.GetProperty("Item", PropertyFlags);
+            => type.GetProperty("Item", ExcelRowWrapper.PropertyFlags);
     }
 }

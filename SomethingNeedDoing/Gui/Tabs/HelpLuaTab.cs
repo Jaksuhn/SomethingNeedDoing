@@ -11,6 +11,7 @@ public class HelpLuaTab(LuaDocumentation luaDocs)
 {
     public void DrawTab()
     {
+        using var child = ImRaii.Child(nameof(HelpLuaTab));
         ImGuiUtils.Section("Lua Scripting", () => ImGui.TextWrapped($"Below are all of the functions and properties provided by the framework. Click any to copy the full call path to clipboard."));
 
         foreach (var module in luaDocs.GetModules())

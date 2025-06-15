@@ -1,4 +1,5 @@
 ﻿using Dalamud.Interface.Colors;
+using Dalamud.Interface.Utility.Raii;
 using ECommons.ImGuiMethods;
 using SomethingNeedDoing.Core.Interfaces;
 using System.Reflection;
@@ -36,6 +37,7 @@ public class HelpCommandsTab
 
     public void DrawTab()
     {
+        using var child = ImRaii.Child(nameof(HelpCommandsTab));
         ImGuiUtils.Section("Commands", () =>
         {
             foreach (var (name, info) in Commands.OrderBy(x => x.Key))

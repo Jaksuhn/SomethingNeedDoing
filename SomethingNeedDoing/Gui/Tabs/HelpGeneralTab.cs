@@ -1,4 +1,5 @@
 ﻿using Dalamud.Interface.Colors;
+using Dalamud.Interface.Utility.Raii;
 using ECommons.ImGuiMethods;
 using SomethingNeedDoing.Scheduler;
 
@@ -7,6 +8,7 @@ public static class HelpGeneralTab
 {
     public static void DrawTab()
     {
+        using var child = ImRaii.Child(nameof(HelpGeneralTab));
         ImGuiUtils.Section(P.Name, () =>
         {
             ImGui.TextWrapped($"{P.Name} is an expansion of the native macro system, with smart helpers, additional commands and modifiers, and unlimited macros.");

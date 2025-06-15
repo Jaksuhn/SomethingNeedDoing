@@ -8,6 +8,7 @@ public static class HelpClicksTab
 {
     public static void DrawTab()
     {
+        using var child = ImRaii.Child(nameof(HelpClicksTab));
         ImGuiUtils.Section("Click Commands", () =>
         {
             ImGui.TextWrapped("Click commands can be used to interact with game UI elements. You can use these in your macros.");

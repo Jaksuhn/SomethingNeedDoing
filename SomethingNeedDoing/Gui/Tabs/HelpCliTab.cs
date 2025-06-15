@@ -8,6 +8,7 @@ public class HelpCliTab(CommandService cmds)
 {
     public void DrawTab()
     {
+        using var child = ImRaii.Child(nameof(HelpCliTab));
         ImGuiUtils.Section("Command Line Interface", () => ImGui.TextWrapped("The following commands can be used in chat or your macro text."));
 
         ImGuiUtils.Section("Main Command", () => ImGui.TextUnformatted(cmds.MainCommand), contentFont: UiBuilder.MonoFont);
