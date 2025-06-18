@@ -6,6 +6,8 @@ using ECommons.ImGuiMethods;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.Managers;
 using System.Threading.Tasks;
+using ImGuiNET;
+using System.Numerics;
 
 namespace SomethingNeedDoing.Gui;
 
@@ -19,6 +21,21 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
     private bool _showLineNumbers = true;
     private bool _highlightSyntax = true;
     private UpdateState _updateState = UpdateState.Unknown;
+    private int _lastCursorPos = -1;
+    private int _currentCursorLine = 0;
+    private string _editorId = "##MacroEditor";
+
+    // Constants
+    private const float EditorPadding = 5.0f;
+    private const int TopScrollMargin = 2;
+    private const int BottomScrollMargin = 3;
+    private const int MaxTextLength = 1_000_000;
+    private const int LineNumberRightPadding = 6;
+    
+    // UI Layout constants
+    private const int GitMacroToolbarWidth = 145;
+    private const int RegularToolbarWidth = 120;
+    private const int ToolbarHeightMultiplier = 2;
 
     private enum UpdateState
     {
@@ -29,8 +46,8 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
 
     public void Draw(IMacro? macro)
     {
-        using var child = ImRaii.Child("RightPanel", new Vector2(0, -1), false);
-        if (!child) return;
+        using var rightPanel = ImRaii.Child("RightPanel", new Vector2(0, -1), false);
+        if (!rightPanel) return;
 
         if (macro == null)
         {
@@ -41,7 +58,10 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
         DrawEditorToolbar(macro);
         ImGui.Separator();
 
-        var editorHeight = ImGui.GetContentRegionAvail().Y - ImGui.GetFrameHeightWithSpacing() * 2;
+        var availableSpace = ImGui.GetContentRegionAvail().Y;
+        var statusBarSpace = ImGui.GetFrameHeightWithSpacing() * ToolbarHeightMultiplier;
+        var editorHeight = availableSpace - statusBarSpace;
+        
         DrawCodeEditor(macro, editorHeight);
         DrawStatusBar(macro);
     }
@@ -57,7 +77,8 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
 
     private void DrawEditorToolbar(IMacro macro)
     {
-        using var toolbar = ImRaii.Child("ToolbarChild", new Vector2(-1, ImGui.GetFrameHeight() * 2f), false);
+        var toolbarHeight = ImGui.GetFrameHeight() * ToolbarHeightMultiplier;
+        using var toolbar = ImRaii.Child("ToolbarChild", new Vector2(-1, toolbarHeight), false);
         if (!toolbar) return;
 
         ImGui.Spacing();
@@ -86,131 +107,256 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
 
     private void DrawRightAlignedControls(IMacro macro)
     {
-        ImGui.SameLine(ImGui.GetWindowWidth() - (macro is ConfigMacro { IsGitMacro: true } ? 145 : 120));
+        var isGitMacro = macro is ConfigMacro { IsGitMacro: true };
+        var toolbarWidth = isGitMacro ? GitMacroToolbarWidth : RegularToolbarWidth;
+        var rightAlignment = ImGui.GetWindowWidth() - toolbarWidth;
+        
+        ImGui.SameLine(rightAlignment);
 
-        using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudGrey);
+        using var greyText = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudGrey);
 
+        DrawRunningMacrosButton();
+        DrawLineNumberToggle();
+        DrawSyntaxHighlightToggle();
+        
+        if (isGitMacro)
+            DrawGitUpdateButton((ConfigMacro)macro);
+    }
+
+    private void DrawRunningMacrosButton()
+    {
         var runningMacros = _scheduler.GetMacros().ToList();
         var macroCount = runningMacros.Count;
-        var (statusColor, statusIcon) = macroCount > 0
-            ? (ImGuiColors.HealerGreen, FontAwesomeIcon.Play)
-            : (ImGuiColors.DalamudGrey, FontAwesomeIcon.Desktop);
+        var hasRunningMacros = macroCount > 0;
+        
+        var statusColor = hasRunningMacros ? ImGuiColors.HealerGreen : ImGuiColors.DalamudGrey;
+        var statusIcon = hasRunningMacros ? FontAwesomeIcon.Play : FontAwesomeIcon.Desktop;
+        var statusText = hasRunningMacros ? $"{macroCount} running" : "No macros running";
 
         using (ImRaii.PushColor(ImGuiCol.Text, statusColor))
         {
-            if (ImGuiUtils.IconButton(statusIcon, macroCount > 0 ? $"{macroCount} running" : "No macros running"))
+            if (ImGuiUtils.IconButton(statusIcon, statusText))
                 ws.Toggle<StatusWindow>();
         }
+    }
 
+    private void DrawLineNumberToggle()
+    {
         ImGui.SameLine();
-        if (ImGuiUtils.IconButton(
-            _showLineNumbers ? FontAwesomeHelper.IconSortAsc : FontAwesomeHelper.IconSortDesc,
-            "Toggle Line Numbers"))
+        var icon = _showLineNumbers ? FontAwesomeHelper.IconSortAsc : FontAwesomeHelper.IconSortDesc;
+        if (ImGuiUtils.IconButton(icon, "Toggle Line Numbers"))
             _showLineNumbers = !_showLineNumbers;
+    }
 
+    private void DrawSyntaxHighlightToggle()
+    {
         ImGui.SameLine();
-        if (ImGuiUtils.IconButton(
-            _highlightSyntax ? FontAwesomeHelper.IconCheck : FontAwesomeHelper.IconXmark,
-            "Syntax Highlighting (not currently available)"))
+        var icon = _highlightSyntax ? FontAwesomeHelper.IconCheck : FontAwesomeHelper.IconXmark;
+        if (ImGuiUtils.IconButton(icon, "Syntax Highlighting (not currently available)"))
             _highlightSyntax = !_highlightSyntax;
+    }
 
-        if (macro is ConfigMacro { IsGitMacro: true } configMacro)
+    private void DrawGitUpdateButton(ConfigMacro configMacro)
+    {
+        ImGui.SameLine();
+        var (indicator, color, tooltip) = GetUpdateIndicatorInfo();
+
+        if (ImGuiUtils.IconButtonWithNotification(FontAwesomeIcon.Bell, indicator, color, tooltip))
         {
-            ImGui.SameLine();
-            var (updateIndicator, updateColor, tooltip) = _updateState switch
-            {
-                UpdateState.None => ("0", ImGuiColors.DalamudGrey, "No updates available"),
-                UpdateState.Available => ("1", ImGuiColors.DPSRed, "Update available (click to update)"),
-                _ => ("?", ImGuiColors.DalamudGrey, "Check for updates")
-            };
+            if (_updateState == UpdateState.Available)
+                Task.Run(async () => await _gitManager.UpdateMacro(configMacro));
+            else
+                Task.Run(async () => await CheckForUpdates(configMacro));
+        }
+    }
 
-            if (ImGuiUtils.IconButtonWithNotification(FontAwesomeIcon.Bell, updateIndicator, updateColor, tooltip))
-            {
-                if (_updateState == UpdateState.Available)
-                    Task.Run(async () => await _gitManager.UpdateMacro(configMacro));
-                else
-                    Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await _gitManager.CheckForUpdates(configMacro);
-                            _updateState = configMacro.GitInfo.HasUpdate ? UpdateState.Available : UpdateState.None;
-                        }
-                        catch
-                        {
-                            _updateState = UpdateState.Unknown;
-                        }
-                    });
-            }
+    private (string indicator, Vector4 color, string tooltip) GetUpdateIndicatorInfo()
+    {
+        return _updateState switch
+        {
+            UpdateState.None => ("0", ImGuiColors.DalamudGrey, "No updates available"),
+            UpdateState.Available => ("1", ImGuiColors.DPSRed, "Update available (click to update)"),
+            _ => ("?", ImGuiColors.DalamudGrey, "Check for updates")
+        };
+    }
+
+    private async Task CheckForUpdates(ConfigMacro configMacro)
+    {
+        try
+        {
+            await _gitManager.CheckForUpdates(configMacro);
+            _updateState = configMacro.GitInfo.HasUpdate ? UpdateState.Available : UpdateState.None;
+        }
+        catch
+        {
+            _updateState = UpdateState.Unknown;
         }
     }
 
     private void DrawCodeEditor(IMacro macro, float height)
     {
         var lineNumberWidth = CalculateLineNumberWidth(macro.Content);
-        var lineHeight = ImGui.GetTextLineHeight();
-        var editorPadding = 5.0f;
+        var lineHeight = ImGui.CalcTextSize("A").Y;
 
-        // Use a single scrollable child window that contains both line numbers and text editor
-        using var scrollableChild = ImRaii.Child("CodeEditorScrollable", new Vector2(0, height), false, ImGuiWindowFlags.HorizontalScrollbar);
-        if (!scrollableChild) return;
+        using var scrollChild = ImRaii.Child("CodeEditorScrollable", new Vector2(0, height), false, ImGuiWindowFlags.HorizontalScrollbar);
+        if (!scrollChild) return;
 
         if (_showLineNumbers)
         {
-            DrawLineNumbers(macro.Content, lineNumberWidth, lineHeight, editorPadding);
+            DrawLineNumbers(macro.Content, lineNumberWidth, lineHeight, EditorPadding);
             ImGui.SameLine(0, 0);
         }
 
-        DrawTextEditor(macro, lineHeight, editorPadding);
+        DrawTextEditor(macro, lineHeight, EditorPadding);
+        HandleCursorTracking(lineHeight, EditorPadding, height);
     }
 
-    private float CalculateLineNumberWidth(string content) => content.Split('\n').Length switch
+    private float CalculateLineNumberWidth(string content)
     {
-        > 999 => 60,
-        > 99 => 50,
-        _ => 40
-    };
+        var lineCount = content.Split('\n').Length;
+        return lineCount switch
+        {
+            > 999 => 60,
+            > 99 => 50,
+            _ => 40
+        };
+    }
 
-    private void DrawLineNumbers(string content, float width, float height, float padding)
+    private void DrawLineNumbers(string content, float width, float lineHeight, float padding)
     {
-        using var _ = ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.1f, 0.1f, 0.1f, 1.0f)).Push(ImGuiCol.Text, ImGuiColors.DalamudGrey);
-        using var __ = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(0, 0)).Push(ImGuiStyleVar.WindowPadding, new Vector2(padding, padding));
+        var lineNumberBackground = new Vector4(0.1f, 0.1f, 0.1f, 1.0f);
+        
+        using var colors = ImRaii.PushColor(ImGuiCol.ChildBg, lineNumberBackground)
+            .Push(ImGuiCol.Text, ImGuiColors.DalamudGrey);
+        using var styles = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(0, 0))
+            .Push(ImGuiStyleVar.WindowPadding, new Vector2(padding, padding))
+            .Push(ImGuiStyleVar.FramePadding, new Vector2(5, padding));
 
         var lines = content.Split('\n');
-        var calculatedHeight = lines.Length * height + padding * 2;
+        var calculatedHeight = lines.Length * lineHeight + padding * 2;
         var availableHeight = ImGui.GetContentRegionAvail().Y;
         var totalHeight = Math.Max(calculatedHeight, availableHeight);
 
-        // Create a child window for line numbers that doesn't scroll independently
-        using var child = ImRaii.Child("LineNumbers", new Vector2(width, totalHeight), true, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        var childFlags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
+        using var child = ImRaii.Child("LineNumbers", new Vector2(width, totalHeight), true, childFlags);
         if (!child) return;
 
         for (var i = 0; i < lines.Length; i++)
         {
-            var textWidth = ImGui.CalcTextSize($"{i + 1}").X;
-            ImGui.SetCursorPosX(width - textWidth - 6);
-            ImGui.Text($"{i + 1}");
+            var lineNumber = $"{i + 1}";
+            var textWidth = ImGui.CalcTextSize(lineNumber).X;
+            var rightAlignedX = width - textWidth - LineNumberRightPadding;
+            
+            ImGui.SetCursorPosX(rightAlignedX);
+            ImGui.Text(lineNumber);
         }
     }
 
-    private void DrawTextEditor(IMacro macro, float height, float padding)
+    private unsafe void DrawTextEditor(IMacro macro, float lineHeight, float padding)
     {
-        using var _ = ImRaii.PushColor(ImGuiCol.FrameBg, new Vector4(0.15f, 0.15f, 0.15f, 1.0f));
-        using var __ = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(5, padding));
+        var editorBackground = new Vector4(0.15f, 0.15f, 0.15f, 1.0f);
+        var framePadding = new Vector2(5, padding);
+        
+        using var colors = ImRaii.PushColor(ImGuiCol.FrameBg, editorBackground);
+        using var styles = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, framePadding);
 
-        var lines = macro.Content.Split('\n');
-        var totalHeight = Math.Max(lines.Length * height + padding * 2, ImGui.GetContentRegionAvail().Y);
+        if (macro is not ConfigMacro configMacro) return;
+
+        var contents = configMacro.Content;
+        var lines = contents.Split('\n');
+        var textHeight = lines.Length * lineHeight + padding * 2;
+        var availableHeight = ImGui.GetContentRegionAvail().Y;
+        var totalHeight = Math.Max(textHeight, availableHeight);
         var editorWidth = ImGui.GetContentRegionAvail().X;
+        
+        var inputFlags = ImGuiInputTextFlags.AllowTabInput | ImGuiInputTextFlags.CallbackAlways;
+        var hasContentChanged = ImGui.InputTextMultiline(_editorId, ref contents, MaxTextLength, 
+            new Vector2(editorWidth, totalHeight), inputFlags, UpdateCursorPosition);
 
-        if (macro is ConfigMacro configMacro)
+        if (hasContentChanged)
         {
-            var contents = configMacro.Content;
-            if (ImGui.InputTextMultiline("##MacroEditor", ref contents, 1_000_000, new Vector2(editorWidth, totalHeight), ImGuiInputTextFlags.AllowTabInput))
+            configMacro.Content = contents;
+            C.Save();
+        }
+    }
+
+    private unsafe int UpdateCursorPosition(ImGuiInputTextCallbackData* data)
+    {
+        var ptr = new ImGuiInputTextCallbackDataPtr(data);
+        
+        if (ptr.CursorPos == _lastCursorPos) return 0;
+        
+        _lastCursorPos = ptr.CursorPos;
+        
+        // Count newlines to find current line
+        _currentCursorLine = 0;
+        for (int i = 0; i < Math.Min(ptr.CursorPos, ptr.BufTextLen); i++)
+        {
+            unsafe
             {
-                configMacro.Content = contents;
-                C.Save();
+                if (((byte*)ptr.Buf)[i] == '\n')
+                    _currentCursorLine++;
             }
         }
+        
+        return 0;
+    }
+
+    private void HandleCursorTracking(float lineHeight, float padding, float viewportHeight)
+    {
+        if (!ImGui.IsItemActive() && !ImGui.IsItemFocused()) return;
+        
+        var scrollInfo = GetScrollInfo();
+        var visibleLines = CalculateVisibleLines(scrollInfo, lineHeight);
+        
+        if (ShouldScrollUp(visibleLines))
+            ScrollUp(visibleLines, lineHeight);
+        else if (ShouldScrollDown(visibleLines))
+            ScrollDown(visibleLines, lineHeight, scrollInfo);
+    }
+
+    private (float scrollY, float maxScrollY, float windowHeight) GetScrollInfo()
+    {
+        return (ImGui.GetScrollY(), ImGui.GetScrollMaxY(), ImGui.GetWindowHeight());
+    }
+
+    private (int top, int bottom) CalculateVisibleLines((float scrollY, float maxScrollY, float windowHeight) scrollInfo, float lineHeight)
+    {
+        var topVisibleLine = (int)(scrollInfo.scrollY / lineHeight);
+        var bottomVisiblePixel = scrollInfo.scrollY + scrollInfo.windowHeight;
+        var bottomVisibleLine = (int)(bottomVisiblePixel / lineHeight);
+        
+        return (topVisibleLine, bottomVisibleLine);
+    }
+
+    private bool ShouldScrollUp((int top, int bottom) visibleLines)
+    {
+        return _currentCursorLine < visibleLines.top + TopScrollMargin;
+    }
+
+    private bool ShouldScrollDown((int top, int bottom) visibleLines)
+    {
+        return _currentCursorLine > visibleLines.bottom - BottomScrollMargin;
+    }
+
+    private void ScrollUp((int top, int bottom) visibleLines, float lineHeight)
+    {
+        var targetLine = Math.Max(0, _currentCursorLine - TopScrollMargin);
+        var newScrollY = targetLine * lineHeight;
+        ImGui.SetScrollY(Math.Max(0, newScrollY));
+    }
+
+    private void ScrollDown((int top, int bottom) visibleLines, float lineHeight, (float scrollY, float maxScrollY, float windowHeight) scrollInfo)
+    {
+        var targetVisibleLine = visibleLines.bottom - BottomScrollMargin;
+        var scrollAdjustment = (_currentCursorLine - targetVisibleLine) * lineHeight;
+        var newScrollY = scrollInfo.scrollY + scrollAdjustment;
+        ImGui.SetScrollY(Math.Min(scrollInfo.maxScrollY, Math.Max(0, newScrollY)));
+    }
+
+    private void Copy(string content)
+    {
+        ImGui.SetClipboardText(content);
     }
 
     private void DrawStatusBar(IMacro macro)
@@ -219,7 +365,7 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
 
         var lines = macro.Content.Split('\n').Length;
         var chars = macro.Content.Length;
-        ImGuiEx.Text(ImGuiColors.DalamudGrey, $"Name: {macro.Name}  |  Lines: {lines}  |  Chars: {chars}  |  Type: {macro.Type}");
+        ImGuiEx.Text(ImGuiColors.DalamudGrey, $"Name: {macro.Name}  |  Lines: {lines}  |  Chars: {chars}  |  Type: {macro.Type}  |  Cursor: {_currentCursorLine + 1}");
 
         if (macro is ConfigMacro { IsGitMacro: true } configMacro)
         {
