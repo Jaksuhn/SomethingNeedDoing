@@ -10,7 +10,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="ImGuiColorTextEditNetDalamud" Version="0.5.1" />
+		<PackageReference Include="ImGuiColorTextEditNetDalamud" Version="0.8.0" />
 		<PackageReference Include="Laylua" Version="1.0.0" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.5" />
 		<PackageReference Include="NLua" Version="1.7.5" />
