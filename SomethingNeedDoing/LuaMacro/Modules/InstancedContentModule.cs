@@ -5,6 +5,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using NLua;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.LuaMacro.Wrappers;
+using ContentType = FFXIVClientStructs.FFXIV.Client.Game.Event.ContentType;
 
 namespace SomethingNeedDoing.LuaMacro.Modules;
 /// <summary>
@@ -15,9 +16,9 @@ public unsafe class InstancedContentModule : LuaModuleBase
     public override string ModuleName => "InstancedContent";
     public override void Register(Lua lua)
     {
-        lua.DoString("DynamicEventState = luanet.import_type('FFXIVClientStructs.FFXIV.Client.Game.InstanceContent.DynamicEventState')");
-        lua.DoString("OceanFishingStatus = luanet.import_type('FFXIVClientStructs.FFXIV.Client.Game.InstanceContent.InstanceContentOceanFishing+OceanFishingStatus')");
-        lua.DoString("ContentType = luanet.import_type('FFXIVClientStructs.FFXIV.Client.Game.Event.ContentType')");
+        lua.RegisterEnum<DynamicEventState>();
+        lua.RegisterEnum<InstanceContentOceanFishing.OceanFishingStatus>();
+        lua.RegisterEnum<ContentType>();
         base.Register(lua);
     }
 

@@ -1,4 +1,6 @@
 ﻿using Dalamud.Game.ClientState.Objects.SubKinds;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
+using Lumina.Excel.Sheets;
 using NLua;
 using SomethingNeedDoing.LuaMacro.Wrappers;
 
@@ -9,7 +11,7 @@ public unsafe class EntityModule : LuaModuleBase
     protected override object? MetaIndex(LuaTable table, string key) => Svc.Objects[int.Parse(key)] is { } obj ? new EntityWrapper(obj) : null;
     public override void Register(Lua lua)
     {
-        lua.DoString("ObjectKind = luanet.import_type('FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind')");
+        lua.RegisterEnum<ObjectKind>();
         base.Register(lua);
     }
 

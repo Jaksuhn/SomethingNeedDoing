@@ -101,7 +101,6 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
             lua.RegisterInternalFunctions();
             lua.SetTriggerEventData(triggerArgs);
             lua.RegisterClass<Svc>();
-            lua.DoString("luanet.load_assembly('FFXIVClientStructs')");
             moduleManager.RegisterAll(lua);
 
             var engines = new List<IEngine>

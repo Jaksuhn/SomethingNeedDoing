@@ -8,8 +8,8 @@ public unsafe class FateModule : LuaModuleBase
     public override string ModuleName => "Fates";
     public override void Register(Lua lua)
     {
-        lua.DoString("FateRule = luanet.import_type('SomethingNeedDoing.LuaMacro.Modules.FateModule.FateRule')");
-        lua.DoString("FateState = luanet.import_type('FFXIVClientStructs.FFXIV.Client.Game.Fate.FateState')");
+        lua.RegisterEnum<FateRule>();
+        lua.RegisterEnum<FateState>();
         base.Register(lua);
     }
 

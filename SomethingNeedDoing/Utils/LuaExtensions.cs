@@ -20,9 +20,24 @@ public static class LuaExtensions
     /// </summary>
     public static void RegisterClass<T>(this Lua lua)
     {
-        lua.DoString(@$"luanet.load_assembly('{typeof(T).Assembly.GetName().Name}')");
+        var assembly = typeof(T).Assembly.GetName().Name;
+        if (assembly is null)
+            throw new ArgumentException($"Assembly name for type {typeof(T).FullName} is null.");
+
+        lua.LoadAssembly(assembly);
         lua.DoString(@$"{typeof(T).Name} = luanet.import_type('{typeof(T).FullName}')()");
     }
+
+    /// <summary>
+    /// Registers an enum as a dynamically accessible object. Must be called after <see cref="Lua.LoadCLRPackage"/>
+    /// This funcion just forwards to RegisterClass and exists only for clarity.
+    /// </summary>
+    public static void RegisterEnum<T>(this Lua lua) where T : Enum => lua.RegisterClass<T>();
+
+    // <summary>
+    /// Loads a .NET assembly into the Lua state.
+    /// </summary>
+    public static void LoadAssembly(this Lua lua, string assembly) => lua.DoString($"luanet.load_assembly('{assembly}')");
 
     public static void LoadPackageSearcherSnippet(this Lua lua) => lua.DoString(LuaCodeSnippets.PackageSearchersSnippet);
 

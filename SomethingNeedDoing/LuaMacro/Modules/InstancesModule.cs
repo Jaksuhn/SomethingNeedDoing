@@ -13,9 +13,9 @@ public unsafe class InstancesModule : LuaModuleBase
     public override string ModuleName => "Instances";
     public override void Register(Lua lua)
     {
-        lua.DoString("OnlineStatus = luanet.import_type('FFXIVClientStructs.FFXIV.Client.UI.Info.OnlineStatus')");
-        lua.DoString("GrandCompany = luanet.import_type('FFXIVClientStructs.FFXIV.Client.UI.Agent.GrandCompany')");
-        lua.DoString("Language = luanet.import_type('FFXIVClientStructs.FFXIV.Client.UI.Info.Language')");
+        lua.RegisterEnum<OnlineStatus>();
+        lua.RegisterEnum<GrandCompany>();
+        lua.RegisterEnum<Language>();
         base.Register(lua);
     }
 

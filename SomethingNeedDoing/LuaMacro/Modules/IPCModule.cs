@@ -3,6 +3,7 @@ using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.Documentation;
 using System.Reflection;
 using System.Linq.Expressions;
+using SomethingNeedDoing.External;
 
 namespace SomethingNeedDoing.LuaMacro.Modules;
 
@@ -33,7 +34,7 @@ public class IPCModule : LuaModuleBase
 
     public override void Register(Lua lua)
     {
-        lua.DoString("AutoRotationConfigOption = luanet.import_type('SomethingNeedDoing.External.Wrath.AutoRotationConfigOption')");
+        lua.RegisterEnum<Wrath.AutoRotationConfigOption>();
         lua.DoString($"{ModuleName} = {{}}");
 
         RegisterHelperFunctions(lua);

@@ -11,7 +11,7 @@ public unsafe class ActionsModule : LuaModuleBase
     public override string ModuleName => "Actions";
     public override void Register(NLua.Lua lua)
     {
-        lua.DoString("ActionType = luanet.import_type('FFXIVClientStructs.FFXIV.Client.Game.ActionType')");
+        lua.RegisterEnum<ActionType>();
         base.Register(lua);
     }
 
