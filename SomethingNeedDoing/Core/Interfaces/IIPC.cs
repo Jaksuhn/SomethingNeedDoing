@@ -32,6 +32,7 @@ public abstract class IPC : IIPC
         public const string Kawaii = $"{Dynamis}kawaii";
         public const string Veyn = $"{Dynamis}veyn";
         public const string Croizat = $"{Dynamis}croizat";
+        public const string CombatReborn = "https://raw.githubusercontent.com/FFXIV-CombatReborn/CombatRebornRepo/main/pluginmaster.json";
 
         private const string Dynamis = "https://puni.sh/api/repository/";
     }
