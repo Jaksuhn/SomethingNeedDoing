@@ -9,7 +9,7 @@ namespace SomethingNeedDoing.LuaMacro.Modules.Engines;
 /// <summary>
 /// Engine for executing native commands.
 /// </summary>
-public class NativeEngine(MacroParser parser) : IEngine
+public class NativeEngine : IEngine
 {
     /// <summary>
     /// Event raised when a macro execution is requested.
