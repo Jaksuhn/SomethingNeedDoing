@@ -14,13 +14,6 @@ public class LuaEngine : IEngine
     /// <inheritdoc/>
     public event EventHandler<MacroExecutionRequestedEventArgs>? MacroExecutionRequested;
 
-    public LuaEngine(NLuaMacroEngine luaEngine)
-    {
-        // Forward macro execution requests from the Lua engine
-        luaEngine.MacroExecutionRequested += (sender, e) =>
-            MacroExecutionRequested?.Invoke(this, e);
-    }
-
     public async Task ExecuteAsync(string content, CancellationToken cancellationToken = default)
     {
         try

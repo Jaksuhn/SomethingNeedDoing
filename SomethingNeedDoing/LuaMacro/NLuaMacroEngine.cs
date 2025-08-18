@@ -104,20 +104,22 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
             lua.RegisterClass<Svc>();
             moduleManager.RegisterAll(lua);
 
+            var nativeEngine = new NativeEngine();
+            nativeEngine.MacroExecutionRequested += (sender, e) =>
+                MacroExecutionRequested?.Invoke(this, e);
+
+            nativeEngine.LoopControlRequested += (sender, e) =>
+                LoopControlRequested?.Invoke(this, e);
+
+            var luaEngine = new LuaEngine();
+            luaEngine.MacroExecutionRequested += (sender, e) =>
+                MacroExecutionRequested?.Invoke(this, e);
+
             var engines = new List<IEngine>
             {
-                new NativeEngine(parser),
-                new LuaEngine(this)
+                nativeEngine,
+                luaEngine
             };
-
-            if (engines[0] is NativeEngine nativeEngine)
-            {
-                nativeEngine.MacroExecutionRequested += (sender, e) =>
-                    MacroExecutionRequested?.Invoke(this, e);
-
-                nativeEngine.LoopControlRequested += (sender, e) =>
-                    LoopControlRequested?.Invoke(this, e);
-            }
 
             var enginesModule = new EnginesModule(engines);
             enginesModule.Register(lua);
