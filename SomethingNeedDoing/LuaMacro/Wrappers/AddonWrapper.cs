@@ -61,6 +61,33 @@ public class AtkValueWrapper(AtkValue value) : IWrapper
 {
     private AtkValue Value = value;
 
-    [LuaDocs] public string ValueString => Value.GetValueAsString();
+    [LuaDocs]
+    public string ValueString
+    {
+        get
+        {
+            try
+            {
+                if (Value.Type == FFXIVClientStructs.FFXIV.Component.GUI.ValueType.String)
+                {
+                    var str = Value.String;
+                    if (string.IsNullOrEmpty(str))
+                        return string.Empty;
 
+                    // Use Dalamud's SeString parser to strip formatting
+                    var parsed = Dalamud.Game.Text.SeStringHandling.SeString.Parse(
+                        System.Text.Encoding.UTF8.GetBytes(str)
+                    ).TextValue;
+
+                    // Clean up any remaining special characters at start/end
+                    return parsed.Trim().TrimStart('%', '&', '\x02', '\x03');
+                }
+                return Value.GetValueAsString() ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                return $"Error: {ex.Message}";
+            }
+        }
+    }
 }
