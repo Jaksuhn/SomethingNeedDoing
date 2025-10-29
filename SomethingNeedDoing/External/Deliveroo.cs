@@ -6,7 +6,7 @@ namespace SomethingNeedDoing.External;
 public class DeliverooIPC : IPC
 {
     public override string Name => "Deliveroo";
-    public override string Repo => Repos.Liza;
+    public override string Repo => Repos.Vera;
 
     [EzIPC]
     [LuaFunction(description: "Checks if a turn-in is currently running")]
