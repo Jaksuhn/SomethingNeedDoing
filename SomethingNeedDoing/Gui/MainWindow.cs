@@ -77,7 +77,6 @@ public class MainWindow : Window
         RenameModal.DrawModal();
         RenameFolderModal.DrawModal();
         MigrationModal.DrawModal();
-        FirstTimeWarningModal.DrawModal();
         _versionHistoryModal.Draw();
 
         using var _ = ImRaii.TabBar("Tabs");
