@@ -26,24 +26,28 @@ public class Questionable : IPC
         parameterDescriptions: ["questId"])]
     public Func<string, bool> IsQuestLocked;
 
+    [Changelog("13.54")]
     [EzIPC]
     [LuaFunction(
         description: "Checks if a quest has been completed",
         parameterDescriptions: ["questId"])]
     public Func<string, bool> IsQuestComplete;
 
+    [Changelog("13.54")]
     [EzIPC]
     [LuaFunction(
         description: "Checks if a character can accept a quest",
         parameterDescriptions: ["questId"])]
     public Func<string, bool> IsReadyToAcceptQuest;
 
+    [Changelog("13.54")]
     [EzIPC]
     [LuaFunction(
         description: "Checks if a quest is currently accepted",
         parameterDescriptions: ["questId"])]
     public Func<string, bool> IsQuestAccepted;
 
+    [Changelog("13.54")]
     [EzIPC]
     [LuaFunction(
         description: "Checks if a quest is not obtainable on this character",
