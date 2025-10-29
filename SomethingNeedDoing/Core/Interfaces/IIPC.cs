@@ -25,13 +25,13 @@ public abstract class IPC : IIPC
     public class Repos
     {
         public const string FirstParty = "";
-        public const string Liza = "https://git.carvel.li/liza/";
         public const string Punish = "https://love.puni.sh/ment.json";
         public const string Limiana = "https://github.com/NightmareXIV/MyDalamudPlugins/raw/main/pluginmaster.json";
         public const string Herc = $"{Dynamis}herc";
         public const string Kawaii = $"{Dynamis}kawaii";
         public const string Veyn = $"{Dynamis}veyn";
         public const string Croizat = $"{Dynamis}croizat";
+        public const string Vera = $"{Dynamis}vera";
 
         private const string Dynamis = "https://puni.sh/api/repository/";
     }

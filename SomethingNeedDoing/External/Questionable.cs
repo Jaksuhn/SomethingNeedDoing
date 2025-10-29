@@ -6,7 +6,7 @@ namespace SomethingNeedDoing.External;
 public class Questionable : IPC
 {
     public override string Name => "Questionable";
-    public override string Repo => Repos.Liza;
+    public override string Repo => Repos.Punish;
 
     [EzIPC]
     [LuaFunction(description: "Checks if the plugin is running")]
@@ -25,6 +25,34 @@ public class Questionable : IPC
         description: "Checks if a quest is locked",
         parameterDescriptions: ["questId"])]
     public Func<string, bool> IsQuestLocked;
+
+    [Changelog("13.54")]
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if a quest has been completed",
+        parameterDescriptions: ["questId"])]
+    public Func<string, bool> IsQuestComplete;
+
+    [Changelog("13.54")]
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if a character can accept a quest",
+        parameterDescriptions: ["questId"])]
+    public Func<string, bool> IsReadyToAcceptQuest;
+
+    [Changelog("13.54")]
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if a quest is currently accepted",
+        parameterDescriptions: ["questId"])]
+    public Func<string, bool> IsQuestAccepted;
+
+    [Changelog("13.54")]
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if a quest is not obtainable on this character",
+        parameterDescriptions: ["questId"])]
+    public Func<string, bool> IsQuestUnobtainable;
 
     [EzIPC]
     [LuaFunction(
