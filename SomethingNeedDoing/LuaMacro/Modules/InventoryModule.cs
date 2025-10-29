@@ -1,4 +1,5 @@
-﻿using FFXIVClientStructs.FFXIV.Client.Game;
+﻿using Dalamud.Game.Inventory;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.Interop;
@@ -13,7 +14,9 @@ public unsafe class InventoryModule : LuaModuleBase
     protected override object? MetaIndex(LuaTable table, object key) => GetInventoryContainer(Enum.Parse<InventoryType>(key.ToString() ?? string.Empty));
 
     [LuaFunction] public InventoryContainerWrapper GetInventoryContainer(InventoryType container) => new(container);
-    [LuaFunction] public InventoryItemWrapper GetInventoryItem(InventoryType container, int slot) => new(container, slot);
+    [LuaFunction]
+    [Changelog("13.01", ChangelogType.Changed, "Renamed from GetInventoryItem to GetInventoryItemBySlot")]
+    public InventoryItemWrapper? GetInventoryItemBySlot(InventoryType container, int slot) => new(InventoryManager.Instance()->GetInventoryContainer(container)->GetInventorySlot(slot));
 
     [LuaFunction]
     [Changelog("12.9")]
@@ -152,6 +155,7 @@ public unsafe class InventoryModule : LuaModuleBase
         public InventoryItemWrapper(InventoryType container, int slot) => Item = InventoryManager.Instance()->GetInventoryContainer(container)->GetInventorySlot(slot);
         public InventoryItemWrapper(InventoryContainer* container, int slot) => Item = container->GetInventorySlot(slot);
         public InventoryItemWrapper(InventoryItem* item) => Item = item;
+        public InventoryItemWrapper(GameInventoryItem item) => Item = (InventoryItem*)item.Address;
         public InventoryItemWrapper(uint itemId)
         {
             foreach (var inv in playerInv)
@@ -170,6 +174,8 @@ public unsafe class InventoryModule : LuaModuleBase
         [LuaDocs] public ushort Condition => Item->Condition;
         [LuaDocs] public uint GlamourId => Item->GlamourId;
         [LuaDocs] public bool IsHighQuality => Item->IsHighQuality();
+        [LuaDocs][Changelog("13.01")] public bool IsCollectable => Item->IsCollectable();
+        [LuaDocs][Changelog("13.01")] public bool IsEmpty => Item->IsEmpty();
         [LuaDocs] public InventoryItemWrapper? LinkedItem => Item->GetLinkedItem() is not null ? new(Item->GetLinkedItem()) : null;
 
         [LuaDocs] public InventoryType Container => Item->Container;

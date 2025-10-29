@@ -592,7 +592,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
 
     private void OnMacroContentChanged(object? sender, MacroContentChangedEventArgs e)
     {
-        FrameworkLogger.Debug($"Macro content changed for {e.MacroId}, invalidating function cache");
+        FrameworkLogger.Verbose($"Macro content changed for {e.MacroId}, invalidating function cache");
         InvalidateFunctionCache(e.MacroId);
     }
 
