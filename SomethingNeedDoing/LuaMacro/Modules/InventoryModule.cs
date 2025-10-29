@@ -15,7 +15,7 @@ public unsafe class InventoryModule : LuaModuleBase
 
     [LuaFunction] public InventoryContainerWrapper GetInventoryContainer(InventoryType container) => new(container);
     [LuaFunction]
-    [Changelog("13.01", ChangelogType.Changed, "Renamed from GetInventoryItem to GetInventoryItemBySlot")]
+    [Changelog("13.53", ChangelogType.Changed, "Renamed from GetInventoryItem to GetInventoryItemBySlot")]
     public InventoryItemWrapper? GetInventoryItemBySlot(InventoryType container, int slot) => new(InventoryManager.Instance()->GetInventoryContainer(container)->GetInventorySlot(slot));
 
     [LuaFunction]
@@ -174,8 +174,8 @@ public unsafe class InventoryModule : LuaModuleBase
         [LuaDocs] public ushort Condition => Item->Condition;
         [LuaDocs] public uint GlamourId => Item->GlamourId;
         [LuaDocs] public bool IsHighQuality => Item->IsHighQuality();
-        [LuaDocs][Changelog("13.01")] public bool IsCollectable => Item->IsCollectable();
-        [LuaDocs][Changelog("13.01")] public bool IsEmpty => Item->IsEmpty();
+        [LuaDocs][Changelog("13.53")] public bool IsCollectable => Item->IsCollectable();
+        [LuaDocs][Changelog("13.53")] public bool IsEmpty => Item->IsEmpty();
         [LuaDocs] public InventoryItemWrapper? LinkedItem => Item->GetLinkedItem() is not null ? new(Item->GetLinkedItem()) : null;
 
         [LuaDocs] public InventoryType Container => Item->Container;
