@@ -71,6 +71,7 @@ public enum TriggerEvent
     OnDutyStarted,
     OnDutyWiped,
     OnDutyCompleted,
+    OnEmote,
 }
 
 /// <summary>

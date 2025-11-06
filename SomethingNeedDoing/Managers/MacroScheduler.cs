@@ -3,7 +3,11 @@ using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
+using Dalamud.Utility.Signatures;
+using ECommons;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using NLua;
 using SomethingNeedDoing.Core.Events;
 using SomethingNeedDoing.Core.Interfaces;
@@ -43,8 +47,15 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     /// </summary>
     public event EventHandler<MacroErrorEventArgs>? MacroError;
 
+    private unsafe delegate long OnEmoteFuncDelegate(IntPtr a1, GameObject* source, ushort emoteId, GameObjectId targetId, long a5);
+    [Signature("48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 56 48 83 EC 30 4C 8B 74 24 ?? 48 8B D9", DetourName = nameof(OnEmoteFuncDetour))]
+    private readonly Hook<OnEmoteFuncDelegate> OnEmoteFuncHook = null!;
+
     public MacroScheduler(NativeMacroEngine nativeEngine, NLuaMacroEngine luaEngine, TriggerEventManager triggerEventManager, MacroHierarchyManager hierarchyManager, IEnumerable<IDisableable> disableablePlugins)
     {
+        Svc.Hook.InitializeFromAttributes(this);
+        OnEmoteFuncHook?.Enable();
+
         _nativeEngine = nativeEngine;
         _luaEngine = luaEngine;
         _triggerEventManager = triggerEventManager;
@@ -797,6 +808,14 @@ public class MacroScheduler : IMacroScheduler, IDisposable
         _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnDutyCompleted);
     }
 
+    private unsafe long OnEmoteFuncDetour(IntPtr a1, GameObject* source, ushort emoteId, GameObjectId targetId, long a5)
+    {
+        FrameworkLogger.Verbose($"Emote performed: Source={source->NameString}, EmoteId={emoteId}, TargetId={targetId.Id}, a5={a5}");
+        var eventData = new Dictionary<string, object> { { "SourceId", source->EntityId }, { "SourceName", source->NameString }, { "EmoteId", emoteId }, { "TargetId", targetId } };
+        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnEmote, eventData);
+        return OnEmoteFuncHook!.Original(a1, source, emoteId, targetId, a5);
+    }
+
     private void CheckCharacterPostProcess(IMacro macro)
     {
         if (C.ARCharacterPostProcessExcludedCharacters.Any(x => x == Svc.ClientState.LocalContentId))
@@ -933,6 +952,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
         _addonEvents.Clear();
 
         _triggerEventManager.Dispose();
+        OnEmoteFuncHook?.Dispose();
     }
 
     /// <inheritdoc/>

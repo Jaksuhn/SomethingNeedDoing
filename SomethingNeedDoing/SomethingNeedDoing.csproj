@@ -3,6 +3,7 @@
 	<PropertyGroup>
 		<Version>0.0.0.0</Version>
 		<LangVersion>preview</LangVersion>
+		<Platforms>x64;ARM32</Platforms>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))'">
