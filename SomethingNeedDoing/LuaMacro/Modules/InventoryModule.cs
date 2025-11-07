@@ -190,6 +190,7 @@ public unsafe class InventoryModule : LuaModuleBase
             { Head: 1 } => InventoryType.ArmoryHead,
             { Body: 1 } => InventoryType.ArmoryBody,
             { Gloves: 1 } => InventoryType.ArmoryHands,
+            { Waist: 1 } => InventoryType.ArmoryWaist,
             { Legs: 1 } => InventoryType.ArmoryLegs,
             { Feet: 1 } => InventoryType.ArmoryFeets,
             { Ears: 1 } => InventoryType.ArmoryEar,
@@ -197,6 +198,7 @@ public unsafe class InventoryModule : LuaModuleBase
             { Wrists: 1 } => InventoryType.ArmoryWrist,
             { FingerL: 1 } => InventoryType.ArmoryRings,
             { FingerR: 1 } => InventoryType.ArmoryRings,
+            { SoulCrystal: 1 } => InventoryType.ArmorySoulCrystal,
             _ => InventoryType.Invalid
         };
 
@@ -221,16 +223,59 @@ public unsafe class InventoryModule : LuaModuleBase
         [LuaDocs]
         [Changelog("12.51")]
         [Changelog("13.46", ChangelogType.Fixed, "Potential fix for fake movement")]
+        [Changelog("13.56", ChangelogType.Fixed, "Support for EquippedItems and RetainerEquippedItems containers")]
         public void MoveItemSlot(InventoryType destinationContainer)
-            => InventoryManager.Instance()->MoveItemSlot(Container, (ushort)Slot, destinationContainer, GetFirstEmptySlot(destinationContainer), true);
+            => InventoryManager.Instance()->MoveItemSlot(Container, (ushort)Slot, destinationContainer, GetFirstEmptySlot(destinationContainer, ArmouryContainer), true);
     }
 
-    private static unsafe ushort GetFirstEmptySlot(InventoryType container)
+    private static unsafe ushort GetFirstEmptySlot(InventoryType container, InventoryType armouryContainer)
     {
-        var cont = InventoryManager.Instance()->GetInventoryContainer(container);
-        for (ushort i = 0; i < cont->Size; i++)
-            if (cont->Items[i].ItemId == 0)
-                return i;
-        return 0;
+        if (container is InventoryType.EquippedItems or InventoryType.RetainerEquippedItems)
+        {
+            return armouryContainer switch
+            {
+                InventoryType.ArmoryMainHand => EquippedSlot.MainHand,
+                InventoryType.ArmoryOffHand => EquippedSlot.OffHand,
+                InventoryType.ArmoryHead => EquippedSlot.Head,
+                InventoryType.ArmoryBody => EquippedSlot.Body,
+                InventoryType.ArmoryHands => EquippedSlot.Gloves,
+                InventoryType.ArmoryWaist => EquippedSlot.Belt,
+                InventoryType.ArmoryLegs => EquippedSlot.Legs,
+                InventoryType.ArmoryFeets => EquippedSlot.Feet,
+                InventoryType.ArmoryEar => EquippedSlot.Ear,
+                InventoryType.ArmoryNeck => EquippedSlot.Neck,
+                InventoryType.ArmoryWrist => EquippedSlot.Wrists,
+                InventoryType.ArmoryRings => EquippedSlot.FingerL,
+                InventoryType.ArmorySoulCrystal => EquippedSlot.SoulCrystal,
+                _ => throw new ArgumentOutOfRangeException(nameof(armouryContainer), "Invalid armoury container type"),
+            };
+        }
+        else
+        {
+            var cont = InventoryManager.Instance()->GetInventoryContainer(container);
+            for (ushort i = 0; i < cont->Size; i++)
+                if (cont->Items[i].ItemId == 0)
+                    return i;
+            return 0;
+        }
+    }
+
+    private static class EquippedSlot // imagine enums being useful
+    {
+        public const ushort
+            MainHand = 0,
+            OffHand = 1,
+            Head = 2,
+            Body = 3,
+            Gloves = 4,
+            Belt = 5,
+            Legs = 6,
+            Feet = 7,
+            Ear = 8,
+            Neck = 9,
+            Wrists = 10,
+            FingerL = 11,
+            FingerR = 12,
+            SoulCrystal = 13;
     }
 }
