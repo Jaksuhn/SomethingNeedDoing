@@ -226,6 +226,18 @@ public unsafe class InventoryModule : LuaModuleBase
         [Changelog("13.56", ChangelogType.Fixed, "Support for EquippedItems and RetainerEquippedItems containers")]
         public void MoveItemSlot(InventoryType destinationContainer)
             => InventoryManager.Instance()->MoveItemSlot(Container, (ushort)Slot, destinationContainer, GetFirstEmptySlot(destinationContainer, ArmouryContainer), true);
+
+        [LuaDocs]
+        [Changelog("13.58")]
+        public void LowerQuality() => AgentInventoryContext.Instance()->LowerItemQuality(Item, Container, Slot, 0);
+
+        [LuaDocs]
+        [Changelog("13.58")]
+        public void Discard() => InventoryManager.Instance()->DiscardItem(Container, (ushort)Slot);
+
+        [LuaDocs]
+        [Changelog("13.58")]
+        public void SplitItem(int quantity) => InventoryManager.Instance()->SplitItem(Container, (ushort)Slot, quantity);
     }
 
     private static unsafe ushort GetFirstEmptySlot(InventoryType container, InventoryType armouryContainer)
