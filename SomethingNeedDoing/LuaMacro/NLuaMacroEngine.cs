@@ -87,10 +87,11 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken, macro.CancellationSource.Token);
         var token = linkedCts.Token;
 
+        Lua? lua = null;
         try
         {
             FrameworkLogger.Debug($"Starting Lua macro execution for macro {macro.Macro.Id}");
-            using var lua = new Lua();
+            lua = new Lua();
             lua.State.Encoding = Encoding.UTF8;
 
             lua.LoadCLRPackage();
@@ -222,6 +223,20 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
         finally
         {
             _activeLuaEnvironments.Remove(macro.Macro.Id, out var _);
+            
+            // Doing this manually since NLua is a very well written library
+            if (lua != null)
+            {
+                try
+                {
+                    lua.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    FrameworkLogger.Warning($"Error disposing Lua environment for macro {macro.Macro.Id}: {ex.Message}");
+                }
+            }
+            
             macro.Dispose();
         }
     }
