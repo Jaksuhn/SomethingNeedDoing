@@ -62,6 +62,8 @@ public class Config
     /// Gets or sets whether pausing a macro should also pause its child macros.
     /// </summary>
     public bool PropagateControlsToChildren { get; set; } = true;
+    public bool AutoOpenStatusWindow { get; set; } = false;
+
     public bool HasCompletedTutorial { get; set; } = false;
     public bool AcknowledgedLegacyWarning { get; set; } = false;
     #endregion

@@ -4,6 +4,7 @@ using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Hooking;
+using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility.Signatures;
 using ECommons;
@@ -11,6 +12,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using NLua;
 using SomethingNeedDoing.Core.Events;
 using SomethingNeedDoing.Core.Interfaces;
+using SomethingNeedDoing.Gui;
 using SomethingNeedDoing.LuaMacro;
 using SomethingNeedDoing.LuaMacro.Wrappers;
 using SomethingNeedDoing.NativeMacro;
@@ -36,6 +38,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     private readonly NLuaMacroEngine _luaEngine;
     private readonly TriggerEventManager _triggerEventManager;
     private readonly MacroHierarchyManager _hierarchyManager;
+    private readonly WindowSystem _windowSystem;
 
     private readonly HashSet<string> _functionTriggersRegistered = [];
 
@@ -51,7 +54,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     [Signature("48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 56 48 83 EC 30 4C 8B 74 24 ?? 48 8B D9", DetourName = nameof(OnEmoteFuncDetour))]
     private readonly Hook<OnEmoteFuncDelegate> OnEmoteFuncHook = null!;
 
-    public MacroScheduler(NativeMacroEngine nativeEngine, NLuaMacroEngine luaEngine, TriggerEventManager triggerEventManager, MacroHierarchyManager hierarchyManager, IEnumerable<IDisableable> disableablePlugins)
+    public MacroScheduler(NativeMacroEngine nativeEngine, NLuaMacroEngine luaEngine, TriggerEventManager triggerEventManager, MacroHierarchyManager hierarchyManager, WindowSystem windowSystem, IEnumerable<IDisableable> disableablePlugins)
     {
         Svc.Hook.InitializeFromAttributes(this);
         OnEmoteFuncHook?.Enable();
@@ -60,6 +63,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
         _luaEngine = luaEngine;
         _triggerEventManager = triggerEventManager;
         _hierarchyManager = hierarchyManager;
+        _windowSystem = windowSystem;
 
         _nativeEngine.MacroError += OnEngineError;
         _luaEngine.MacroError += OnEngineError;
@@ -300,6 +304,11 @@ public class MacroScheduler : IMacroScheduler, IDisposable
                     {
                         FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Running");
                         state.Macro.State = MacroState.Running;
+
+                        if (C.AutoOpenStatusWindow && _hierarchyManager.GetParentMacro(macro.Id) == null)
+                            if (_windowSystem.GetWindow<StatusWindow>() is { IsOpen: false } statusWindow)
+                                statusWindow.IsOpen = true;
+
                         await engine.StartMacro(macro, state.CancellationSource.Token, triggerArgs, loopCount);
                     }
                     catch (Exception ex)

@@ -33,6 +33,14 @@ public static class SettingsTab
                 C.Save();
             }
             ImGuiEx.Tooltip("When enabled, pausing, resuming and stopping macros will also pause, resume and stop the child macros.");
+
+            var autoOpenStatusWindow = C.AutoOpenStatusWindow;
+            if (ImGui.Checkbox("Auto-open Status Window on Script Start", ref autoOpenStatusWindow))
+            {
+                C.AutoOpenStatusWindow = autoOpenStatusWindow;
+                C.Save();
+            }
+            ImGuiEx.Tooltip("When enabled, the macro status window will automatically open when a script starts running.");
         });
 
         ImGuiUtils.Section("Crafting Settings", () =>
