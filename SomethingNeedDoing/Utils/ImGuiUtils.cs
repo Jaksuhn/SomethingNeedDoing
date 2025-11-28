@@ -212,7 +212,8 @@ public static class ImGuiUtils
         var storageId = ImGui.GetID($"##{id}_open");
         var isOpen = ImGui.GetStateStorage().GetBool(storageId, false);
 
-        ImGui.TextColored(ImGuiColors.DalamudGrey, isOpen ? "▼" : "▶");
+        ImGuiEx.Icon(ImGuiColors.DalamudGrey, isOpen ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight);
+        ImGui.NewLine();
 
         if (ImGui.IsItemClicked())
         {
