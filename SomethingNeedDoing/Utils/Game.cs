@@ -7,6 +7,7 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Lumina.Excel.Sheets;
 
 namespace SomethingNeedDoing.Utils;
+
 public static unsafe class Game
 {
     public static bool CanUseAction(ActionType actionType, uint actionId) => ActionManager.Instance()->GetActionStatus(actionType, actionId) == 0;
@@ -187,7 +188,7 @@ public static unsafe class Game
             {
                 0 => throw new MacroException("Recipe not found"),
                 1 => recipes.First().RowId,
-                _ => recipes.FirstOrDefault(r => r.CraftType.RowId + 8 == Player.JobId).RowId
+                _ => recipes.FirstOrDefault(r => r.CraftType.RowId + 8 == Player.ClassJob.RowId).RowId
             };
         }
 

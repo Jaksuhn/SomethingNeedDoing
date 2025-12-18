@@ -16,7 +16,7 @@ public class RequireCommand(string text, string statusName) : RequireCommandBase
     protected override async Task<bool> CheckCondition(MacroContext context)
     {
         var result = false;
-        await context.RunOnFramework(() => result = Svc.ClientState.LocalPlayer?.StatusList.Any(s => s.GameData.Value.Name.ExtractText().EqualsIgnoreCase(statusName.ToString() ?? string.Empty)) ?? false);
+        await context.RunOnFramework(() => result = Svc.Objects.LocalPlayer?.StatusList.Any(s => s.GameData.Value.Name.ExtractText().EqualsIgnoreCase(statusName.ToString() ?? string.Empty)) ?? false);
         return result;
     }
 

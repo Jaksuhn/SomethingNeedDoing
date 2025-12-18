@@ -15,7 +15,7 @@ namespace SomethingNeedDoing.LuaMacro;
 /// <summary>
 /// Executes Lua script macros using NLua.
 /// </summary>
-public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager cleanupManager, MacroHierarchyManager macroHierarchy, MacroParser parser) : IMacroEngine
+public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager cleanupManager, MacroHierarchyManager macroHierarchy) : IMacroEngine
 {
     /// <inheritdoc/>
     public event EventHandler<MacroErrorEventArgs>? MacroError;
@@ -223,7 +223,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
         finally
         {
             _activeLuaEnvironments.Remove(macro.Macro.Id, out var _);
-            
+
             // Doing this manually since NLua is a very well written library
             if (lua != null)
             {
@@ -236,7 +236,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
                     FrameworkLogger.Warning($"Error disposing Lua environment for macro {macro.Macro.Id}: {ex.Message}");
                 }
             }
-            
+
             macro.Dispose();
         }
     }
