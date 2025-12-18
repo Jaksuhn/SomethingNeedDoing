@@ -133,17 +133,17 @@ public class AllaganTools : IPC
         parameterDescriptions: ["contentId", "inventoryTypeId"])]
     public readonly Func<ulong, uint, HashSet<ulong[]>> GetCharacterItemsByType = null!;
 
-    [EzIPCEvent]
-    [LuaFunction(
-        description: "Event triggered when an item is added to inventory",
-        parameterDescriptions: ["itemId", "itemFlags", "contentId", "quantity"])]
-    public readonly Func<(uint, InventoryItem.ItemFlags, ulong, uint), bool> ItemAdded = null!;
+    //[EzIPCEvent]
+    //[LuaFunction(
+    //    description: "Event triggered when an item is added to inventory",
+    //    parameterDescriptions: ["itemId", "itemFlags", "contentId", "quantity"])]
+    //public readonly Func<(uint, InventoryItem.ItemFlags, ulong, uint), bool> ItemAdded = null!;
 
-    [EzIPCEvent]
-    [LuaFunction(
-        description: "Event triggered when an item is removed from inventory",
-        parameterDescriptions: ["itemId", "itemFlags", "contentId", "quantity"])]
-    public readonly Func<(uint, InventoryItem.ItemFlags, ulong, uint), bool> ItemRemoved = null!;
+    //[EzIPCEvent]
+    //[LuaFunction(
+    //    description: "Event triggered when an item is removed from inventory",
+    //    parameterDescriptions: ["itemId", "itemFlags", "contentId", "quantity"])]
+    //public readonly Func<(uint, InventoryItem.ItemFlags, ulong, uint), bool> ItemRemoved = null!;
 
     [EzIPC($"{_ipcName}.%m", false)]
     [LuaFunction(description: "Gets all craft lists")]
@@ -163,11 +163,11 @@ public class AllaganTools : IPC
     [LuaFunction(description: "Gets the current character ID")]
     public readonly Func<ulong?> CurrentCharacter = null!;
 
-    [EzIPCEvent]
-    [LuaFunction(
-        description: "Event triggered when a retainer is changed",
-        parameterDescriptions: ["retainerId"])]
-    public readonly Func<ulong?, bool> RetainerChanged = null!;
+    //[EzIPCEvent]
+    //[LuaFunction(
+    //    description: "Event triggered when a retainer is changed",
+    //    parameterDescriptions: ["retainerId"])]
+    //public readonly Func<ulong?, bool> RetainerChanged = null!;
 
     [EzIPC($"{_ipcName}.%m", false)]
     [LuaFunction(description: "Checks if the plugin is initialized")]
