@@ -3,7 +3,7 @@
     "Name": "Something Need Doing",
     "Punchline": "Work work.",
     "Description": "Now for more than crafting!",
-    "MinimumDalamudVersion": "13.0.0.0",
+    "MinimumDalamudVersion": "14.0.0.0",
     "RepoUrl": "https://github.com/Jaksuhn/SomethingNeedDoing",
     "IconUrl": "https://raw.githubusercontent.com/Jaksuhn/SomethingNeedDoing/master/res/orc2.png",
     "Tags": [
