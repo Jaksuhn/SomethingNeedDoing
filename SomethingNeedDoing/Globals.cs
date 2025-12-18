@@ -15,3 +15,4 @@ global using static ECommons.GenericHelpers;
 global using static SomethingNeedDoing.Plugin;
 global using Callback = ECommons.Automation.Callback;
 global using Sheets = Lumina.Excel.Sheets;
+global using Player = ECommons.GameHelpers.LegacyPlayer.Player;

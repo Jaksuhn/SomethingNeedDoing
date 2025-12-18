@@ -22,9 +22,9 @@ public class BuddyMemberWrapper(Buddy.BuddyMember buddy) : IWrapper
 public unsafe class CompanionInfoWrapper : IWrapper
 {
     [LuaDocs][Changelog("12.22")] public float TimeLeft => UIState.Instance()->Buddy.CompanionInfo.TimeLeft;
-    [LuaDocs][Changelog("12.22")] public byte BardingHead => UIState.Instance()->Buddy.CompanionInfo.BardingHead;
-    [LuaDocs][Changelog("12.22")] public byte BardingChest => UIState.Instance()->Buddy.CompanionInfo.BardingChest;
-    [LuaDocs][Changelog("12.22")] public byte BardingFeet => UIState.Instance()->Buddy.CompanionInfo.BardingFeet;
+    [LuaDocs][Changelog("12.22")] public byte BardingHead => UIState.Instance()->Buddy.CompanionInfo.BuddyEquipRowIds[0];
+    [LuaDocs][Changelog("12.22")] public byte BardingChest => UIState.Instance()->Buddy.CompanionInfo.BuddyEquipRowIds[1];
+    [LuaDocs][Changelog("12.22")] public byte BardingFeet => UIState.Instance()->Buddy.CompanionInfo.BuddyEquipRowIds[2];
     [LuaDocs][Changelog("12.22")] public uint CurrentXP => UIState.Instance()->Buddy.CompanionInfo.CurrentXP;
     [LuaDocs][Changelog("12.22")] public byte Rank => UIState.Instance()->Buddy.CompanionInfo.Rank;
     [LuaDocs][Changelog("12.22")] public byte Stars => UIState.Instance()->Buddy.CompanionInfo.Stars;
