@@ -4,7 +4,6 @@ using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.LuaMacro.Modules;
 using SomethingNeedDoing.LuaMacro.Modules.Engines;
 using SomethingNeedDoing.Managers;
-using SomethingNeedDoing.NativeMacro;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Threading;

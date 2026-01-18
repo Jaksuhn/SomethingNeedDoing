@@ -1,4 +1,5 @@
 using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Text;
 using SomethingNeedDoing.Core.Interfaces;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
@@ -92,6 +93,21 @@ public class MetadataParser(DependencyFactory dependencyFactory)
                         metadata.AddonEventConfig.EventType = parsedEventType;
             }
 
+            if (yaml.TryGetValue("chat_message_filter", out var chatFilter) && chatFilter is Dictionary<object, object> chatFilterDict)
+                metadata.ChatMessageFilter = ParseChatMessageFilter(chatFilterDict);
+
+            if (yaml.TryGetValue("function_chat_filters", out var functionChatFilters) && functionChatFilters is Dictionary<object, object> functionFiltersDict)
+            {
+                foreach (var kvp in functionFiltersDict)
+                {
+                    var functionName = kvp.Key?.ToString();
+                    if (string.IsNullOrEmpty(functionName)) continue;
+
+                    if (kvp.Value is Dictionary<object, object> filterDict)
+                        metadata.FunctionChatFilters[functionName] = ParseChatMessageFilter(filterDict);
+                }
+            }
+
             if (yaml.TryGetValue("dependencies", out var dependencies))
                 metadata.Dependencies = ParseDependencies(dependencies);
 
@@ -154,6 +170,17 @@ public class MetadataParser(DependencyFactory dependencyFactory)
                 ["addon_name"] = macro.Metadata.AddonEventConfig.AddonName,
                 ["event_type"] = macro.Metadata.AddonEventConfig.EventType.ToString().ToLower()
             };
+        }
+
+        if (macro.Metadata.ChatMessageFilter != null)
+            metadataDict["chat_message_filter"] = SerializeChatMessageFilter(macro.Metadata.ChatMessageFilter);
+
+        if (macro.Metadata.FunctionChatFilters.Any())
+        {
+            metadataDict["function_chat_filters"] = macro.Metadata.FunctionChatFilters.ToDictionary(
+                kvp => kvp.Key,
+                kvp => SerializeChatMessageFilter(kvp.Value)
+            );
         }
 
         if (macro.Metadata.Dependencies.Any())
@@ -388,5 +415,51 @@ public class MetadataParser(DependencyFactory dependencyFactory)
         }
 
         return typeof(string);
+    }
+
+    private static ChatMessageFilterConfig ParseChatMessageFilter(Dictionary<object, object> filterDict)
+    {
+        var filter = new ChatMessageFilterConfig();
+
+        if (filterDict.TryGetValue("channels", out var channels))
+        {
+            if (channels is List<object> channelList)
+            {
+                filter.Channels = [];
+                foreach (var channel in channelList)
+                    if (Enum.TryParse<XivChatType>(channel?.ToString(), true, out var chatType))
+                        filter.Channels.Add(chatType);
+            }
+        }
+
+        if (filterDict.TryGetValue("message_contains", out var messageContains))
+            filter.MessageContains = messageContains?.ToString();
+
+        if (filterDict.TryGetValue("sender_contains", out var senderContains))
+            filter.SenderContains = senderContains?.ToString();
+
+        if (filterDict.TryGetValue("message_regex", out var messageRegex))
+            filter.MessageRegex = messageRegex?.ToString();
+
+        return filter;
+    }
+
+    private static Dictionary<string, object> SerializeChatMessageFilter(ChatMessageFilterConfig filter)
+    {
+        var dict = new Dictionary<string, object>();
+
+        if (filter.Channels != null && filter.Channels.Count > 0)
+            dict["channels"] = filter.Channels.Select(c => c.ToString().ToLower()).ToList();
+
+        if (!string.IsNullOrEmpty(filter.MessageContains))
+            dict["message_contains"] = filter.MessageContains;
+
+        if (!string.IsNullOrEmpty(filter.SenderContains))
+            dict["sender_contains"] = filter.SenderContains;
+
+        if (!string.IsNullOrEmpty(filter.MessageRegex))
+            dict["message_regex"] = filter.MessageRegex;
+
+        return dict;
     }
 }

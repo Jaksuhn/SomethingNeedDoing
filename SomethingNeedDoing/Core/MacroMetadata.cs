@@ -1,4 +1,5 @@
 ﻿using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Text;
 using SomethingNeedDoing.Core.Interfaces;
 
 namespace SomethingNeedDoing.Core;
@@ -73,6 +74,17 @@ public class MacroMetadata
     /// Gets or sets the macro dependencies.
     /// </summary>
     public List<IMacroDependency> Dependencies { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the chat message filter configuration for macro-level OnChatMessage triggers.
+    /// </summary>
+    public ChatMessageFilterConfig? ChatMessageFilter { get; set; }
+
+    /// <summary>
+    /// Gets or sets chat message filter configurations for function-level triggers.
+    /// Key is the function name (e.g., "OnChatMessage"), value is the filter configuration.
+    /// </summary>
+    public Dictionary<string, ChatMessageFilterConfig> FunctionChatFilters { get; set; } = [];
 }
 
 /// <summary>
@@ -89,4 +101,30 @@ public class AddonEventConfig
     /// Gets or sets the type of addon event to monitor.
     /// </summary>
     public AddonEvent EventType { get; set; } = AddonEvent.PostSetup;
+}
+
+/// <summary>
+/// Configuration for filtering chat messages.
+/// </summary>
+public class ChatMessageFilterConfig
+{
+    /// <summary>
+    /// Gets or sets the chat channels to filter by. If null or empty, all channels are allowed.
+    /// </summary>
+    public List<XivChatType>? Channels { get; set; }
+
+    /// <summary>
+    /// Gets or sets a string that the message must contain. If null or empty, no message content filter is applied.
+    /// </summary>
+    public string? MessageContains { get; set; }
+
+    /// <summary>
+    /// Gets or sets a string that the sender must contain. If null or empty, no sender filter is applied.
+    /// </summary>
+    public string? SenderContains { get; set; }
+
+    /// <summary>
+    /// Gets or sets a regex pattern that the message must match. If null or empty, no regex filter is applied.
+    /// </summary>
+    public string? MessageRegex { get; set; }
 }

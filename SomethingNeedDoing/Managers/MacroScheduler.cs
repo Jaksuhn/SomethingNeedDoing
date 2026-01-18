@@ -39,6 +39,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     private readonly TriggerEventManager _triggerEventManager;
     private readonly MacroHierarchyManager _hierarchyManager;
     private readonly WindowSystem _windowSystem;
+    private readonly Core.MetadataParser _metadataParser;
 
     private readonly HashSet<string> _functionTriggersRegistered = [];
 
@@ -54,7 +55,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     [Signature("48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 56 48 83 EC 30 4C 8B 74 24 ?? 48 8B D9", DetourName = nameof(OnEmoteFuncDetour))]
     private readonly Hook<OnEmoteFuncDelegate> OnEmoteFuncHook = null!;
 
-    public MacroScheduler(NativeMacroEngine nativeEngine, NLuaMacroEngine luaEngine, TriggerEventManager triggerEventManager, MacroHierarchyManager hierarchyManager, WindowSystem windowSystem, IEnumerable<IDisableable> disableablePlugins)
+    public MacroScheduler(NativeMacroEngine nativeEngine, NLuaMacroEngine luaEngine, TriggerEventManager triggerEventManager, MacroHierarchyManager hierarchyManager, WindowSystem windowSystem, Core.MetadataParser metadataParser, IEnumerable<IDisableable> disableablePlugins)
     {
         Svc.Hook.InitializeFromAttributes(this);
         OnEmoteFuncHook?.Enable();
@@ -64,6 +65,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
         _triggerEventManager = triggerEventManager;
         _hierarchyManager = hierarchyManager;
         _windowSystem = windowSystem;
+        _metadataParser = metadataParser;
 
         _nativeEngine.MacroError += OnEngineError;
         _luaEngine.MacroError += OnEngineError;
@@ -690,6 +692,13 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     {
         foreach (var macro in C.Macros)
         {
+            // Parse metadata from content to ensure filters and triggers are loaded
+            if (macro is ConfigMacro configMacro)
+            {
+                var parsedMetadata = _metadataParser.ParseMetadata(configMacro.Content, configMacro.Metadata);
+                configMacro.Metadata = parsedMetadata;
+            }
+
             foreach (var triggerEvent in macro.Metadata.TriggerEvents)
                 SubscribeToTriggerEvent(macro, triggerEvent);
 

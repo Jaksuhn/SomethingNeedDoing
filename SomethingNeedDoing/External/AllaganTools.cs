@@ -1,5 +1,4 @@
 ﻿using ECommons.EzIpcManager;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using SomethingNeedDoing.Core.Interfaces;
 
 namespace SomethingNeedDoing.External;

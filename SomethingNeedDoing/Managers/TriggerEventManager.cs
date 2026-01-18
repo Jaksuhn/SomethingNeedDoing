@@ -1,5 +1,7 @@
+using Dalamud.Game.Text;
 using SomethingNeedDoing.Core.Events;
 using SomethingNeedDoing.Core.Interfaces;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SomethingNeedDoing.Managers;
@@ -13,7 +15,8 @@ namespace SomethingNeedDoing.Managers;
 /// <param name="macro">The macro containing the function.</param>
 /// <param name="functionName">The name of the function.</param>
 /// <param name="eventType">The trigger event this function handles.</param>
-public class TriggerFunction(IMacro macro, string functionName, TriggerEvent eventType)
+/// <param name="chatMessageFilter">Optional chat message filter configuration.</param>
+public class TriggerFunction(IMacro macro, string functionName, TriggerEvent eventType, ChatMessageFilterConfig? chatMessageFilter = null)
 {
     /// <summary>
     /// Gets the macro containing this function.
@@ -43,6 +46,11 @@ public class TriggerFunction(IMacro macro, string functionName, TriggerEvent eve
     public string? AddonEventType { get; } = eventType == TriggerEvent.OnAddonEvent && functionName.StartsWith("OnAddonEvent_")
         ? functionName.Split('_')[2]
         : null;
+
+    /// <summary>
+    /// Gets the chat message filter configuration for OnChatMessage triggers.
+    /// </summary>
+    public ChatMessageFilterConfig? ChatMessageFilter { get; } = chatMessageFilter;
 
     /// <inheritdoc/>
     public override bool Equals(object? obj)
@@ -79,7 +87,11 @@ public class TriggerEventManager : IDisposable
         if (!EventHandlers.ContainsKey(eventType))
             EventHandlers[eventType] = [];
 
-        var triggerFunction = new TriggerFunction(macro, string.Empty, eventType);
+        ChatMessageFilterConfig? chatFilter = null;
+        if (eventType == TriggerEvent.OnChatMessage && macro.Metadata.ChatMessageFilter != null)
+            chatFilter = macro.Metadata.ChatMessageFilter;
+
+        var triggerFunction = new TriggerFunction(macro, string.Empty, eventType, chatFilter);
         if (!EventHandlers[eventType].Contains(triggerFunction))
             EventHandlers[eventType].Add(triggerFunction);
     }
@@ -122,7 +134,11 @@ public class TriggerEventManager : IDisposable
                 if (!EventHandlers.ContainsKey(eventType))
                     EventHandlers[eventType] = [];
 
-                var triggerFunction = new TriggerFunction(macro, functionName, eventType);
+                ChatMessageFilterConfig? chatFilter = null;
+                if (eventType == TriggerEvent.OnChatMessage && macro.Metadata.FunctionChatFilters.TryGetValue(functionName, out var filter))
+                    chatFilter = filter;
+
+                var triggerFunction = new TriggerFunction(macro, functionName, eventType, chatFilter);
                 if (EventHandlers[eventType].Contains(triggerFunction))
                 {
                     FrameworkLogger.Debug($"Function trigger already registered for macro {macro.Name} function {functionName} event {eventType}");
@@ -222,6 +238,11 @@ public class TriggerEventManager : IDisposable
                         continue;
                 }
 
+                // For OnChatMessage, check if the message matches the filter
+                if (eventType == TriggerEvent.OnChatMessage && data is Dictionary<string, object> chatData)
+                    if (!MatchesChatMessageFilter(chatData, triggerFunction.ChatMessageFilter))
+                        continue;
+
                 if (string.IsNullOrEmpty(triggerFunction.FunctionName))
                 {
                     // Macro-level trigger: raise the event for the entire macro
@@ -246,6 +267,72 @@ public class TriggerEventManager : IDisposable
                 FrameworkLogger.Error($"Error handling trigger event {eventType} for macro {triggerFunction.Macro.Name} function {triggerFunction.FunctionName}: {ex}");
             }
         }
+    }
+
+    /// <summary>
+    /// Checks if a chat message matches the given filter configuration.
+    /// </summary>
+    /// <param name="chatData">The chat message data dictionary.</param>
+    /// <param name="filter">The filter configuration to check against.</param>
+    /// <returns>True if the message matches the filter (or if no filter is specified), false otherwise.</returns>
+    private static bool MatchesChatMessageFilter(Dictionary<string, object> chatData, ChatMessageFilterConfig? filter)
+    {
+        if (filter == null)
+            return true;
+
+        if (filter.Channels != null && filter.Channels.Count > 0)
+        {
+            if (chatData.TryGetValue("type", out var typeObj) && typeObj is XivChatType chatType)
+            {
+                if (!filter.Channels.Contains(chatType))
+                    return false;
+            }
+            else
+                return false;
+        }
+
+        if (!string.IsNullOrEmpty(filter.MessageContains))
+        {
+            if (chatData.TryGetValue("message", out var messageObj) && messageObj is string message)
+            {
+                if (!message.Contains(filter.MessageContains, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            else
+                return false;
+        }
+
+        if (!string.IsNullOrEmpty(filter.SenderContains))
+        {
+            if (chatData.TryGetValue("sender", out var senderObj) && senderObj is string sender)
+            {
+                if (!sender.Contains(filter.SenderContains, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            else
+                return false;
+        }
+
+        if (!string.IsNullOrEmpty(filter.MessageRegex))
+        {
+            if (chatData.TryGetValue("message", out var messageObj) && messageObj is string message)
+            {
+                try
+                {
+                    if (!Regex.IsMatch(message, filter.MessageRegex, RegexOptions.IgnoreCase))
+                        return false;
+                }
+                catch (ArgumentException)
+                {
+                    FrameworkLogger.Warning($"Invalid regex pattern in chat message filter: {filter.MessageRegex}");
+                    return false;
+                }
+            }
+            else
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>
