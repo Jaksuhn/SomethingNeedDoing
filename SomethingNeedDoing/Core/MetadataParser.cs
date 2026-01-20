@@ -34,12 +34,12 @@ public class MetadataParser(DependencyFactory dependencyFactory)
     public MacroMetadata ParseMetadata(string content, MacroMetadata? previousMetadata = null)
     {
         var match = MetadataBlockRegex.Match(content);
-        if (!match.Success) return new MacroMetadata();
+        if (!match.Success) return previousMetadata ?? new MacroMetadata(); // keep existing if available
 
         var metadataContent = match.Groups[1].Value.Trim();
-        if (string.IsNullOrEmpty(metadataContent)) return new MacroMetadata();
+        if (string.IsNullOrEmpty(metadataContent)) return previousMetadata ?? new MacroMetadata(); // keep existing if empty
 
-        var metadata = new MacroMetadata();
+        var metadata = previousMetadata ?? new MacroMetadata(); // use previous as a base so we're only overriding explicitly present fields
 
         try
         {
