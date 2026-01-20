@@ -341,7 +341,7 @@ public class ConfigFactory : DefaultSerializationFactory, ISerializationFactory
 
     public class IMacroDependencyConverter : JsonConverter
     {
-        public override bool CanConvert(Type objectType) => objectType == typeof(IMacroDependency) || Nullable.GetUnderlyingType(objectType) == typeof(IMacroDependency);
+        public override bool CanConvert(Type objectType) => objectType == typeof(IMacroDependency);
 
         public override object ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
         {
@@ -349,52 +349,19 @@ public class ConfigFactory : DefaultSerializationFactory, ISerializationFactory
                 return null!;
 
             var jObject = JObject.Load(reader);
-
-            var typeToken = jObject["$type"];
-            if (typeToken != null)
-            {
-                var typeName = typeToken.ToString();
-                try
-                {
-                    var resolvedType = Type.GetType(typeName);
-                    if (resolvedType != null && typeof(IMacroDependency).IsAssignableFrom(resolvedType))
-                    {
-                        using var newReader = jObject.CreateReader();
-                        return serializer.Deserialize(newReader, resolvedType)!;
-                    }
-                }
-                catch { }
-            }
-
-            if (jObject["GitInfo"] != null)
-            {
-                using var newReader = jObject.CreateReader();
-                return serializer.Deserialize<GitDependency>(newReader)!;
-            }
-
             var source = jObject["Source"]?.ToString() ?? string.Empty;
-            var id = jObject["Id"]?.ToString() ?? string.Empty;
 
-            Type concreteType;
-
-            if (string.IsNullOrEmpty(source) && !string.IsNullOrEmpty(id))
-                concreteType = Guid.TryParse(id, out _) ? typeof(LocalMacroDependency) : typeof(LocalMacroDependency);
-            else
+            Type concreteType = source switch
             {
-                concreteType = !string.IsNullOrEmpty(source)
-                    ? source switch
-                    {
-                        var s when s.StartsWith("git://") || s.Contains("github.com") => typeof(GitDependency),
-                        var s when Guid.TryParse(s, out _) => typeof(LocalMacroDependency),
-                        var s when s.StartsWith("http://") || s.StartsWith("https://") => typeof(HttpDependency),
-                        var s when s.Contains('\\') || s.Contains('/') => typeof(LocalDependency),
-                        _ => typeof(LocalMacroDependency),
-                    }
-                    : typeof(LocalMacroDependency);
-            }
+                var s when s.StartsWith("git://") || s.Contains("github.com") => typeof(GitDependency),
+                var s when Guid.TryParse(s, out _) => typeof(LocalMacroDependency),
+                var s when s.StartsWith("http://") || s.StartsWith("https://") => typeof(HttpDependency),
+                var s when !string.IsNullOrEmpty(s) && (s.Contains('\\') || s.Contains('/')) => typeof(LocalDependency),
+                _ => throw new JsonException($"Unknown source type [{source}]. Please report to the author."),
+            };
 
-            using var newReader2 = jObject.CreateReader();
-            return serializer.Deserialize(newReader2, concreteType)!;
+            using var newReader = jObject.CreateReader();
+            return serializer.Deserialize(newReader, concreteType)!;
         }
 
         public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer) => serializer.Serialize(writer, value);
