@@ -112,17 +112,35 @@ public class MetadataParser(DependencyFactory dependencyFactory)
                 metadata.Dependencies = ParseDependencies(dependencies);
 
             if (yaml.TryGetValue("configs", out var configs) && configs is Dictionary<object, object> configDict)
-                metadata.Configs = ParseConfigs(configDict);
+            {
+                var parsedConfigs = ParseConfigs(configDict);
+                if (previousMetadata != null)
+                {
+                    var preservedValues = new Dictionary<string, object>(); // cache old
+                    foreach (var prev in previousMetadata.Configs)
+                        preservedValues[prev.Key] = prev.Value.Value;
+
+                    metadata.Configs = new Dictionary<string, MacroConfigItem>(parsedConfigs); // make new
+
+                    foreach (var prev in previousMetadata.Configs) // add any not present in new
+                        if (!metadata.Configs.ContainsKey(prev.Key))
+                            metadata.Configs[prev.Key] = prev.Value;
+
+                    foreach (var kvp in metadata.Configs) // overwrite with cached if they exist
+                        if (preservedValues.TryGetValue(kvp.Key, out var preservedValue))
+                            kvp.Value.Value = preservedValue;
+                }
+                else
+                    metadata.Configs = parsedConfigs;
+            }
+            else if (previousMetadata != null)
+                // no configs in content = keep whatever was already in metadata
+                metadata.Configs = new Dictionary<string, MacroConfigItem>(previousMetadata.Configs);
         }
         catch (Exception ex)
         {
             FrameworkLogger.Error(ex, "Failed to parse metadata YAML");
         }
-
-        if (previousMetadata != null)
-            foreach (var kvp in metadata.Configs)
-                if (previousMetadata.Configs.TryGetValue(kvp.Key, out var oldConfig))
-                    kvp.Value.Value = oldConfig.Value;
 
         return metadata;
     }
