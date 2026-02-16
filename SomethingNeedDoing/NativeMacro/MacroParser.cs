@@ -74,7 +74,7 @@ public class MacroParser
     /// <returns>The command parse info, or null if the text cannot be parsed.</returns>
     private CommandParseInfo? ParseCommandStructure(string text)
     {
-        var match = Regex.Match(text, @"^/([\w-]+)(?:\s+(.*))?$");
+        var match = Regex.Match(text, @"^/(\S+)(?:\s+(.*))?$");
         if (!match.Success)
             return null;
 
