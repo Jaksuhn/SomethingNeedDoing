@@ -1,4 +1,4 @@
-﻿using NLua;
+using NLua;
 using SomethingNeedDoing.Core.Events;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.LuaMacro.Modules;
@@ -89,7 +89,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
         Lua? lua = null;
         try
         {
-            FrameworkLogger.Debug($"Starting Lua macro execution for macro {macro.Macro.Id}");
+            FrameworkLogger.Verbose($"Starting Lua macro execution for macro {macro.Macro.Id}");
             lua = new Lua();
             lua.State.Encoding = Encoding.UTF8;
 
