@@ -107,7 +107,7 @@ public class TriggerEventManager : IDisposable
         if (functionName.StartsWith("OnAddonEvent_"))
         {
             var parts = functionName.Split('_');
-            if (parts.Length == 3) // OnAddonEvent_AddonName_EventType
+            if (parts.Length >= 3) // OnAddonEvent_AddonName_EventType (anything after is ignored)
             {
                 if (!EventHandlers.ContainsKey(TriggerEvent.OnAddonEvent))
                     EventHandlers[TriggerEvent.OnAddonEvent] = [];
@@ -173,7 +173,7 @@ public class TriggerEventManager : IDisposable
         if (functionName.StartsWith("OnAddonEvent_"))
         {
             var parts = functionName.Split('_');
-            if (parts.Length == 3) // OnAddonEvent_AddonName_EventType
+            if (parts.Length >= 3) // OnAddonEvent_AddonName_EventType (anything after is ignored)
             {
                 if (EventHandlers.TryGetValue(TriggerEvent.OnAddonEvent, out var value))
                 {
@@ -229,10 +229,12 @@ public class TriggerEventManager : IDisposable
             try
             {
                 // For OnAddonEvent, check if the addon name and event type match
-                if (eventType == TriggerEvent.OnAddonEvent && data is { } eventData)
+                if (eventType == TriggerEvent.OnAddonEvent && data is Dictionary<string, object> addonEventData)
                 {
-                    var addonName = eventData.GetType().GetProperty("AddonName")?.GetValue(eventData) as string;
-                    var addonEventType = eventData.GetType().GetProperty("EventType")?.GetValue(eventData) as string;
+                    addonEventData.TryGetValue("AddonName", out var addonNameObj);
+                    addonEventData.TryGetValue("EventType", out var addonEventTypeObj);
+                    var addonName = addonNameObj as string;
+                    var addonEventType = addonEventTypeObj as string;
 
                     if (addonName != triggerFunction.AddonName || addonEventType != triggerFunction.AddonEventType)
                         continue;
