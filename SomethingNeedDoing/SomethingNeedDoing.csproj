@@ -19,6 +19,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <None Include="DalamudPackager.targets" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="ECommons" Version="3.2.0.2" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.8" />
 		<PackageReference Include="NLua" Version="1.7.5" />
