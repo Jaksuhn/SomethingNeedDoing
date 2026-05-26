@@ -3,7 +3,15 @@
 	<PropertyGroup>
 		<Version>0.0.0.0</Version>
 		<LangVersion>preview</LangVersion>
-		<Platforms>x64;ARM32</Platforms>
+
+		<Author>croizat</Author>
+		<Name>SomethingNeedDoing</Name>
+		<InternalName>SomethingNeedDoing</InternalName>
+		<Punchline>Work work.</Punchline>
+		<Description>Store unlimited macros and create lua scripts.</Description>
+		<IconUrl>https://s3.puni.sh/media/plugin/34/icon-z405dwrdjem.png</IconUrl>
+		<RepoUrl>https://github.com/Jaksuhn/SomethingNeedDoing</RepoUrl>
+		<Tags>crafting;automation;lua;macros;scripting</Tags>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))'">
