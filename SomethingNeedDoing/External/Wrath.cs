@@ -52,6 +52,18 @@ public class Wrath : IPC
 
     [EzIPC]
     [LuaFunction(
+        description: "Checks if the current job has a Single-Target and Multi-Target combo configured (returns a table keyed by ComboTargetTypeKeys)")]
+    [Changelog("15.4")]
+    public readonly Func<Dictionary<ComboTargetTypeKeys, ComboSimplicityLevelKeys?>> IsCurrentJobConfiguredOn = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if the current job has a Single-Target and Multi-Target combo enabled in Auto-Mode (returns a table keyed by ComboTargetTypeKeys)")]
+    [Changelog("15.4")]
+    public readonly Func<Dictionary<ComboTargetTypeKeys, ComboSimplicityLevelKeys?>> IsCurrentJobAutoModeOn = null!;
+
+    [EzIPC]
+    [LuaFunction(
         description: "Lists all internal names of combos for the given job ID",
         parameterDescriptions: ["jobId"])]
     [Changelog("13.3")]
@@ -94,6 +106,27 @@ public class Wrath : IPC
 
     [EzIPC]
     [LuaFunction(
+        description: "Gets the internal name of the Variant Dungeon parent combo for a job's combat role (e.g. MCH → Variant_PhysRanged)",
+        parameterDescriptions: ["jobId"])]
+    [Changelog("15.4")]
+    public readonly Func<uint, string?> GetVariantParentComboName = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Gets all Variant Dungeon option internal names for a job's combat role (valid for SetComboOptionState)",
+        parameterDescriptions: ["jobId"])]
+    [Changelog("15.4")]
+    public readonly Func<uint, List<string>?> GetVariantOptionNames = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Enables or disables the Variant parent combo and all of its options for the job's combat role under your lease (does not change Cure HP sliders)",
+        parameterDescriptions: ["leaseId", "jobId", "enabled"])]
+    [Changelog("15.4")]
+    public readonly Func<Guid, uint, bool, SetResult> SetVariantReadyForJob = null!;
+
+    [EzIPC]
+    [LuaFunction(
         description: $"Gets the auto rotation config state for the given {nameof(AutoRotationConfigOption)}",
         parameterDescriptions: ["configOption"])]
     public readonly Func<AutoRotationConfigOption, object?> GetAutoRotationConfigState = null!;
@@ -103,6 +136,34 @@ public class Wrath : IPC
         description: $"Sets the auto rotation config state for the given {nameof(AutoRotationConfigOption)} to the given value (must be of the expected type)",
         parameterDescriptions: ["leaseId", "configOption", "configValue"])]
     public readonly Func<Guid, AutoRotationConfigOption, object, SetResult> SetAutoRotationConfigState = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if an action can be used currently without clipping a GCD",
+        parameterDescriptions: ["estimatedWeaveTime"])]
+    [Changelog("15.4")]
+    public readonly Func<float?, bool> CanWeave = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if a delayed weave can be used in the given window",
+        parameterDescriptions: ["weaveStart", "weaveEnd"])]
+    [Changelog("15.4")]
+    public readonly Func<float?, float?, bool> CanDelayedWeave = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if an action is ready to use",
+        parameterDescriptions: ["actionId", "recastCheck", "castCheck"])]
+    [Changelog("15.4")]
+    public readonly Func<uint, bool?, bool?, bool> ActionReady = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Checks if an action was just used within the given variance (in seconds)",
+        parameterDescriptions: ["actionId", "variance"])]
+    [Changelog("15.4")]
+    public readonly Func<uint, float?, bool> JustUsed = null!;
 
     public enum AutoRotationConfigOption
     {
@@ -124,6 +185,13 @@ public class Wrath : IPC
         AutoRezOutOfParty = 15, // bool
         DPSAoETargets = 16, // int
         SingleTargetExcogHPP = 17, // int
+        AutoRezDPSJobsHealersOnly = 18, // bool
+        DPSAlwaysHardTarget = 19, // bool
+        HealerAlwaysHardTarget = 20, // bool
+        BypassQuest = 21, // bool; InCombatOnly is what is being bypassed
+        BypassFATE = 22, // bool; InCombatOnly is what is being bypassed
+        IgnoreRangeInBoss = 23, // bool
+        UnTargetAndDisableForPenalty = 24, // bool
     }
 
     public enum SetResult
@@ -163,5 +231,21 @@ public class Wrath : IPC
     {
         Enabled,
         AutoMode,
+    }
+
+    public enum ComboTargetTypeKeys
+    {
+        SingleTarget = 0,
+        MultiTarget = 1,
+        HealST = 2,
+        HealMT = 3,
+        Other = 4,
+    }
+
+    public enum ComboSimplicityLevelKeys
+    {
+        Simple = 0,
+        Advanced = 1,
+        Other = 2,
     }
 }
