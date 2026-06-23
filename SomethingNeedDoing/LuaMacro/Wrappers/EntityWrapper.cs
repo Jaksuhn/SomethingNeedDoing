@@ -46,6 +46,7 @@ public unsafe class EntityWrapper : IWrapper
     [LuaDocs] public bool IsCastInterruptible => GetCharacterValue(() => Character->GetCastInfo()->Interruptible);
     [LuaDocs] public bool IsInCombat => GetCharacterValue(() => Character->InCombat);
     [LuaDocs] public byte HuntRank => FindRow<NotoriousMonster>(x => x.BNpcBase.Value!.RowId == _obj->BaseId)?.Rank ?? 0;
+    [LuaDocs][Changelog("15.5")] public bool IsHostile => GetCharacterValue(() => Character->IsHostile);
 
     [LuaDocs]
     [Changelog("12.15")]
