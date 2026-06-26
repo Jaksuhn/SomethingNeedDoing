@@ -1,7 +1,6 @@
 using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
 using DalamudCodeEditor;
-using SomethingNeedDoing.Core;
 using SomethingNeedDoing.Core.Interfaces;
 using System.Threading;
 using System.Threading.Tasks;

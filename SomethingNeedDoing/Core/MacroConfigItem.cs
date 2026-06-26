@@ -23,6 +23,11 @@ public class MacroConfigItem : IEquatable<MacroConfigItem>
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the collapsible section header to group this config under in the settings UI.
+    /// </summary>
+    public string Section { get; set; } = string.Empty;
+
+    /// <summary>
     /// Gets or sets the type of the config item.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
@@ -105,7 +110,7 @@ public class MacroConfigItem : IEquatable<MacroConfigItem>
         return value switch
         {
             List<string> stringList => stringList,
-            List<object> objectList => objectList.Select(x => x?.ToString() ?? string.Empty).ToList(),
+            List<object> objectList => [.. objectList.Select(x => x?.ToString() ?? string.Empty)],
             _ => []
         };
     }
@@ -152,6 +157,7 @@ public class MacroConfigItem : IEquatable<MacroConfigItem>
 
         return string.Equals(NormalizeObject(DefaultValue), NormalizeObject(other.DefaultValue), StringComparison.Ordinal) &&
                Description == other.Description &&
+               Section == other.Section &&
                Type == other.Type &&
                string.Equals(NormalizeObject(MinValue), NormalizeObject(other.MinValue), StringComparison.Ordinal) &&
                string.Equals(NormalizeObject(MaxValue), NormalizeObject(other.MaxValue), StringComparison.Ordinal) &&
@@ -168,6 +174,7 @@ public class MacroConfigItem : IEquatable<MacroConfigItem>
         var hash = new HashCode();
         hash.Add(NormalizeObject(DefaultValue), StringComparer.Ordinal);
         hash.Add(Description, StringComparer.Ordinal);
+        hash.Add(Section, StringComparer.Ordinal);
         hash.Add(Type);
         hash.Add(NormalizeObject(MinValue), StringComparer.Ordinal);
         hash.Add(NormalizeObject(MaxValue), StringComparer.Ordinal);

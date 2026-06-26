@@ -120,7 +120,7 @@ public class MetadataParser(DependencyFactory dependencyFactory)
                     foreach (var prev in previousMetadata.Configs)
                         preservedValues[prev.Key] = prev.Value.Value;
 
-                    metadata.Configs = new Dictionary<string, MacroConfigItem>(parsedConfigs); // make new
+                    metadata.Configs = [with(parsedConfigs)]; // make new
 
                     foreach (var prev in previousMetadata.Configs) // add any not present in new
                         if (!metadata.Configs.ContainsKey(prev.Key))
@@ -135,7 +135,7 @@ public class MetadataParser(DependencyFactory dependencyFactory)
             }
             else if (previousMetadata != null)
                 // no configs in content = keep whatever was already in metadata
-                metadata.Configs = new Dictionary<string, MacroConfigItem>(previousMetadata.Configs);
+                metadata.Configs = [with(previousMetadata.Configs)];
         }
         catch (Exception ex)
         {
@@ -224,6 +224,7 @@ public class MetadataParser(DependencyFactory dependencyFactory)
                 kvp =>
                 {
                     var isSimpleConfig = string.IsNullOrEmpty(kvp.Value.Description) &&
+                                        string.IsNullOrEmpty(kvp.Value.Section) &&
                                         kvp.Value.MinValue == null &&
                                         kvp.Value.MaxValue == null &&
                                         string.IsNullOrEmpty(kvp.Value.ValidationPattern) &&
@@ -241,6 +242,9 @@ public class MetadataParser(DependencyFactory dependencyFactory)
 
                     if (!string.IsNullOrEmpty(kvp.Value.Description))
                         configDict["description"] = kvp.Value.Description;
+
+                    if (!string.IsNullOrEmpty(kvp.Value.Section))
+                        configDict["section"] = kvp.Value.Section;
 
                     if (kvp.Value.Type != typeof(string))
                         configDict["type"] = kvp.Value.TypeName;
@@ -347,6 +351,9 @@ public class MetadataParser(DependencyFactory dependencyFactory)
 
                 if (configData.TryGetValue("description", out var description))
                     configItem.Description = description?.ToString() ?? string.Empty;
+
+                if (configData.TryGetValue("section", out var section))
+                    configItem.Section = section?.ToString() ?? string.Empty;
 
                 if (configData.TryGetValue("type", out var type))
                     configItem.TypeName = type?.ToString() ?? "string";

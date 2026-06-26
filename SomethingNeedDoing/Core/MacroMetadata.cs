@@ -1,7 +1,6 @@
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Text;
 using Newtonsoft.Json;
-using SomethingNeedDoing;
 using SomethingNeedDoing.Core.Interfaces;
 
 namespace SomethingNeedDoing.Core;

@@ -1,4 +1,3 @@
-using SomethingNeedDoing.Core;
 using SomethingNeedDoing.Core.Events;
 using System.Threading.Tasks;
 
