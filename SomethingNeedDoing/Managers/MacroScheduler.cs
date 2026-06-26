@@ -383,7 +383,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
                             if (_windowSystem.GetWindow<StatusWindow>() is { IsOpen: false } statusWindow)
                                 statusWindow.IsOpen = true;
 
-                        await engine.StartMacro(macro, state.CancellationSource.Token, triggerArgs, loopCount);
+                        await engine.StartMacro(macro, state, state.CancellationSource.Token, triggerArgs, loopCount);
                     }
                     catch (Exception ex)
                     {
@@ -663,7 +663,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
         }
     }
 
-    private class MacroExecutionState(IMacro macro)
+    private class MacroExecutionState(IMacro macro) : IMacroInstance
     {
         public IMacro Macro { get; } = macro;
         public bool PauseAtLoop { get; set; }

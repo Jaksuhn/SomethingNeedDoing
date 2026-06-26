@@ -33,24 +33,13 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
     private class MacroExecutionState(IMacro macro)
     {
         public IMacro Macro { get; } = macro;
-        public CancellationTokenSource CancellationSource { get; } = new CancellationTokenSource();
-        public Task? ExecutionTask { get; set; }
-        public ManualResetEventSlim PauseEvent { get; } = new ManualResetEventSlim(true);
-        public bool PauseAtLoop { get; set; } = false;
-        public bool StopAtLoop { get; set; } = false;
         public List<IMacroCommand> Commands { get; set; } = [];
         public int LoopCount { get; set; }
         public int CurrentLoop { get; set; }
-
-        public void Dispose()
-        {
-            CancellationSource.Dispose();
-            PauseEvent.Dispose();
-        }
     }
 
     /// <inheritdoc/>
-    public async Task StartMacro(IMacro macro, CancellationToken token, TriggerEventArgs? triggerArgs = null, int loopCount = 0)
+    public async Task StartMacro(IMacro macro, IMacroInstance instance, CancellationToken token, TriggerEventArgs? triggerArgs = null, int loopCount = 0)
     {
         var state = new MacroExecutionState(macro)
         {
@@ -61,8 +50,7 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
 
         try
         {
-            state.ExecutionTask = ExecuteMacro(state, token);
-            await state.ExecutionTask;
+            await ExecuteMacro(state, instance, token);
         }
         catch (Exception ex)
         {
@@ -71,11 +59,8 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
         }
     }
 
-    private async Task ExecuteMacro(MacroExecutionState state, CancellationToken externalToken)
+    private async Task ExecuteMacro(MacroExecutionState state, IMacroInstance instance, CancellationToken token)
     {
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken, state.CancellationSource.Token);
-        var token = linkedCts.Token;
-
         try
         {
             for (var i = state.CurrentLoop; i < state.LoopCount; i++)
@@ -88,19 +73,19 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
                     token.ThrowIfCancellationRequested();
 
                     // Wait if paused
-                    state.PauseEvent.Wait(token);
+                    instance.PauseEvent.Wait(token);
 
                     // Check for loop pause/stop
-                    if (state.PauseAtLoop)
+                    if (instance.PauseAtLoop)
                     {
-                        state.PauseAtLoop = false;
-                        state.PauseEvent.Reset();
+                        instance.PauseAtLoop = false;
+                        instance.PauseEvent.Reset();
                     }
 
-                    if (state.StopAtLoop)
+                    if (instance.StopAtLoop)
                     {
-                        state.StopAtLoop = false;
-                        state.CancellationSource.Cancel();
+                        instance.StopAtLoop = false;
+                        instance.CancellationSource.Cancel();
                         return;
                     }
 
@@ -139,9 +124,6 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
             throw;
         }
     }
-
-    /// <inheritdoc/>
-    public Task StartMacro(IMacro macro) => StartMacro(macro, CancellationToken.None);
 
     protected virtual void OnMacroError(string macroId, string message, Exception? ex = null)
     {

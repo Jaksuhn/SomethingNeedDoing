@@ -43,23 +43,14 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
     /// <summary>
     /// Represents the current state of a macro execution.
     /// </summary>
-    private class MacroInstance(IMacro macro) : IDisposable
+    private class MacroInstance(IMacro macro)
     {
         public IMacro Macro { get; } = macro;
         public LuaFunction? LuaGenerator { get; set; }
-        public CancellationTokenSource CancellationSource { get; } = new();
-        public ManualResetEventSlim PauseEvent { get; } = new(true);
-        public Task? ExecutionTask { get; set; }
-
-        public void Dispose()
-        {
-            CancellationSource.Dispose();
-            PauseEvent.Dispose();
-        }
     }
 
     /// <inheritdoc/>
-    public async Task StartMacro(IMacro macro, CancellationToken token, TriggerEventArgs? triggerArgs = null, int _ = 0)
+    public async Task StartMacro(IMacro macro, IMacroInstance instance, CancellationToken token, TriggerEventArgs? triggerArgs = null, int _ = 0)
     {
         if (macro.Type != MacroType.Lua)
             throw new ArgumentException("This engine only supports Lua macros", nameof(macro));
@@ -71,8 +62,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
 
         try
         {
-            state.ExecutionTask = ExecuteMacro(state, token, triggerArgs);
-            await state.ExecutionTask;
+            await ExecuteMacro(state, instance, token, triggerArgs);
         }
         catch (Exception ex)
         {
@@ -81,11 +71,8 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
         }
     }
 
-    private async Task ExecuteMacro(MacroInstance macro, CancellationToken externalToken, TriggerEventArgs? triggerArgs = null, int _ = 0)
+    private async Task ExecuteMacro(MacroInstance macro, IMacroInstance instance, CancellationToken token, TriggerEventArgs? triggerArgs = null, int _ = 0)
     {
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken, macro.CancellationSource.Token);
-        var token = linkedCts.Token;
-
         Lua? lua = null;
         try
         {
@@ -144,7 +131,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
                         try
                         {
                             // Wait if paused
-                            macro.PauseEvent.Wait(token);
+                            instance.PauseEvent.Wait(token);
 
                             if (macro.LuaGenerator == null)
                                 break;
@@ -236,7 +223,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
                 }
             }
 
-            macro.Dispose();
+            macro.LuaGenerator = null;
         }
     }
 
