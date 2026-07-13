@@ -322,6 +322,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             var currentFolderId = _state.SelectedFolderId;
             var expandedFoldersCopy = new HashSet<string>(_state.ExpandedFolders);
 
+            scheduler.UnregisterDeletedMacro(macro);
             macro.Delete();
 
             if (_state.SelectedMacroId == macro.Id)

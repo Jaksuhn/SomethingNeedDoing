@@ -482,16 +482,13 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     }
 
     /// <summary>
-    /// Forces cleanup of a macro's state.
+    /// Forces cleanup of a macro's state (doesn't unregister triggers).
     /// </summary>
     /// <param name="macroId">The ID of the macro to clean up.</param>
     public void CleanupMacro(string macroId)
     {
         if (_macroStates.Remove(macroId, out var state))
         {
-            if (state.Macro is ConfigMacro configMacro)
-                _triggerEventManager.UnregisterAllTriggers(configMacro);
-
             UnregisterFunctionTriggers(state.Macro);
             state.CancellationSource.Cancel();
             state.CancellationSource.Dispose();
@@ -501,6 +498,30 @@ public class MacroScheduler : IMacroScheduler, IDisposable
 
         _enginesByMacroId.Remove(macroId, out _);
         _cachedFunctionNames.Remove(macroId, out _);
+    }
+
+    /// <inheritdoc/>
+    public void UnregisterDeletedMacro(IMacro macro)
+    {
+        ArgumentNullException.ThrowIfNull(macro);
+        StopMacro(macro.Id);
+
+        foreach (var triggerEvent in macro.Metadata.TriggerEvents.ToList())
+            UnsubscribeFromTriggerEvent(macro, triggerEvent);
+
+        _triggerEventManager.UnregisterAllTriggers(macro);
+        UnregisterFunctionTriggers(macro);
+
+        macro.ContentChanged -= OnMacroContentChanged;
+
+        if (_triggerRefreshDebounceCts.TryRemove(macro.Id, out var cts))
+        {
+            cts.Cancel();
+            try { cts.Dispose(); } catch { }
+        }
+
+        CleanupMacro(macro.Id);
+        FrameworkLogger.Debug($"Unregistered triggers and cleaned up deleted macro {macro.Name} ({macro.Id})");
     }
 
     /// <summary>
@@ -778,13 +799,21 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     {
         if (sender is IMacro macro)
         {
+            if (macro is ConfigMacro && C.GetMacro(macro.Id) is null) // orphaned ConfigMacro
+            {
+                // don't run triggers for orphaned macros, unregister them
+                FrameworkLogger.Warning($"Skipping trigger event {e.EventType} for deleted macro {macro.Name} ({macro.Id}); unregistering orphaned triggers");
+                _triggerEventManager.UnregisterAllTriggers(macro);
+                return;
+            }
+
             if (_macroStates.ContainsKey(macro.Id))
             {
                 FrameworkLogger.Debug($"Skipping trigger event for macro {macro.Name} - cannot start");
                 return;
             }
 
-            if (macro is TemporaryMacro tempMacro)
+            if (macro is TemporaryMacro)
             {
                 FrameworkLogger.Verbose($"Processing temporary macro {macro.Id}");
                 FrameworkLogger.Verbose($"Subscribing to state changes for temporary macro {macro.Id}");

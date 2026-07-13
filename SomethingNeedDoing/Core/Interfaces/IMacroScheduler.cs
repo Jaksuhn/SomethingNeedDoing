@@ -139,4 +139,10 @@ public interface IMacroScheduler
     /// <param name="macro">The macro whose content already reflects the desired script.</param>
     /// <param name="refreshFunctionTriggersIfRunning">If true and the macro is running, refreshes function-level trigger registrations.</param>
     void RefreshTriggersFromContent(ConfigMacro macro, bool refreshFunctionTriggersIfRunning = true);
+
+    /// <summary>
+    /// Stops a macro if running and unregisters all of its trigger subscriptions.
+    /// </summary>
+    /// <remarks>Call before removing from config</remarks>
+    void UnregisterDeletedMacro(IMacro macro);
 }
