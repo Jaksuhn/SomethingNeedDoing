@@ -1,9 +1,9 @@
-using System.Globalization;
-using System.Text.RegularExpressions;
 using Dalamud.Game.ClientState.Keys;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.NativeMacro.Commands;
 using SomethingNeedDoing.NativeMacro.Modifiers;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace SomethingNeedDoing.NativeMacro;
 
@@ -189,12 +189,18 @@ public class MacroParser
 
     private ActionCommand ParseActionCommand(string parameters)
     {
-        var match = Regex.Match(parameters, @"^(?<name>.*?)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // separate placeholders from the action name
+        var match = Regex.Match(parameters, @"^(?:""(?<name>[^""]+)""|(?<name>[^<]+?))(?<rest>(?:\s*<[^>]+>)*)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         if (!match.Success)
             throw new MacroSyntaxError(parameters);
 
-        var nameValue = match.ExtractAndUnquote("name");
-        var fullCommandText = $"/ac \"{nameValue}\"";
+        var nameValue = match.Groups["name"].Value.Trim();
+        if (string.IsNullOrEmpty(nameValue))
+            throw new MacroSyntaxError(parameters);
+
+        // convert <party.N> to <N>
+        var rest = Regex.Replace(match.Groups["rest"].Value.Trim(), @"<party\.([1-8])>", "<$1>", RegexOptions.IgnoreCase);
+        var fullCommandText = string.IsNullOrEmpty(rest) ? $"/ac \"{nameValue}\"" : $"/ac \"{nameValue}\" {rest}";
         return new ActionCommand(fullCommandText, nameValue);
     }
 
