@@ -1,4 +1,4 @@
-using DalamudCodeEditor.TextEditor;
+﻿using DalamudCodeEditor.TextEditor;
 
 namespace DalamudCodeEditor;
 
@@ -30,10 +30,11 @@ public class UndoRecord
 
     public static UndoRecord Create(Editor editor, Action change)
     {
-        var record = new UndoRecord();
-
-        record.Before = editor.State.Clone();
-        record.BeforeText = editor.Buffer.GetText();
+        var record = new UndoRecord
+        {
+            Before = editor.State.Clone(),
+            BeforeText = editor.Buffer.GetText()
+        };
 
         change();
 
