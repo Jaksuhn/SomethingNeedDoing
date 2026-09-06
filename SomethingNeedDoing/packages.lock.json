@@ -10,64 +10,70 @@
       },
       "DotNet.ReproducibleBuilds": {
         "type": "Direct",
-        "requested": "[1.2.39, )",
-        "resolved": "1.2.39",
-        "contentHash": "fcFN01tDTIQqDuTwr1jUQK/geofiwjG5DycJQOnC72i1SsLAk1ELe+apBOuZ11UMQG8YKFZG1FgvjZPbqHyatg=="
+        "requested": "[2.0.5, )",
+        "resolved": "2.0.5",
+        "contentHash": "8LrlvI1KpjjJ4VGSqZ16yoOCKlQnYS+Y8rYNifNrscmVh5anJcF9E4e0NiDP30BHBMUbkoJ5KdcxoRWM7Pz9Aw=="
       },
       "ECommons": {
         "type": "Direct",
-        "requested": "[3.2.0.2, )",
-        "resolved": "3.2.0.2",
-        "contentHash": "inrqsG7HOuF4UC9jXYPdy1HEIjQqSAbOogyN6xcXvbLXCsjy3VRqQVR5PrLAoxt+GlSVu+qpsdo9KyUI/yPFIA=="
+        "requested": "[3.2.1.18, )",
+        "resolved": "3.2.1.18",
+        "contentHash": "7yudYdKsg6TMki8+vekCbnOf4JdG/JFAcMFzMC77uv8E9WF87Cln6TL+OvFYUbqatfyFiMwXwJOEs/P7LcCjPQ=="
+      },
+      "Injectio": {
+        "type": "Direct",
+        "requested": "[6.2.0, )",
+        "resolved": "6.2.0",
+        "contentHash": "MgtjdaL1LJojuOTG5Wak9/zrQWnk1o2NYFZZlOLX1AMqcvZj7DCIot31N/e7e9e81iEsQRyEV0ClKIdkozqkqA=="
       },
       "Microsoft.Extensions.DependencyInjection": {
         "type": "Direct",
-        "requested": "[9.0.8, )",
-        "resolved": "9.0.8",
-        "contentHash": "JJjI2Fa+QtZcUyuNjbKn04OjIUX5IgFGFu/Xc+qvzh1rXdZHLcnqqVXhR4093bGirTwacRlHiVg1XYI9xum6QQ==",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "PSmotV19c7E3lKed++uYo1kSiXFI+uTl37CBSrhq+CfLC3FCHjG7R91+xPnNehQfHS1b0Tzo/CCLPWH3qaEheg==",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.8"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11"
         }
       },
       "NLua": {
         "type": "Direct",
-        "requested": "[1.7.5, )",
-        "resolved": "1.7.5",
-        "contentHash": "ACDMZiuJxQWw3rMeP7nPIIOid5fv2Bp66XKr7q1+vJdfcr9AZ8NRqoKOAf0ZsZGBUODEZhEbwliuwgo0T0s2XA==",
+        "requested": "[1.7.9, )",
+        "resolved": "1.7.9",
+        "contentHash": "fRTEILixMFY6dfidmYacS4qEgUDKJyi8dyYHfiLZAoBxItA9PvBLyIqMwPzqtJY4kHNRbmeoDJNGzeD90US4lg==",
         "dependencies": {
-          "KeraLua": "1.4.4"
+          "KeraLua": "1.4.9"
         }
       },
       "Scrutor": {
         "type": "Direct",
-        "requested": "[6.1.0, )",
-        "resolved": "6.1.0",
-        "contentHash": "m4+0RdgnX+jeiaqteq9x5SwEtuCjWG0KTw1jBjCzn7V8mCanXKoeF8+59E0fcoRbAjdEq6YqHFCmxZ49Kvqp3g==",
+        "requested": "[7.0.0, )",
+        "resolved": "7.0.0",
+        "contentHash": "wHWaroody48jnlLoq/REwUltIFLxplXyHTP+sttrc8P7+jkiVqf38afDidJNv4qgD/6zz2NKOYg06xLZ1bG7wQ==",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.1",
-          "Microsoft.Extensions.DependencyModel": "8.0.2"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
+          "Microsoft.Extensions.DependencyModel": "10.0.0"
         }
       },
       "YamlDotNet": {
         "type": "Direct",
-        "requested": "[16.3.0, )",
-        "resolved": "16.3.0",
-        "contentHash": "SgMOdxbz8X65z8hraIs6hOEdnkH6hESTAIUa7viEngHOYaH+6q5XJmwr1+yb9vJpNQ19hCQY69xbFsLtXpobQA=="
+        "requested": "[18.1.0, )",
+        "resolved": "18.1.0",
+        "contentHash": "5K+9KFg2TdTl7VXv88Qzi/0lqK6JFoNP3lRuImPYGRV7K/QYklDyTrj4+A+KAki1JsQi6qKY+hDyY7d6WRqjrw=="
       },
       "KeraLua": {
         "type": "Transitive",
-        "resolved": "1.4.4",
-        "contentHash": "JsTqvTtHP9DzBK0EigywkQ/EwOHBGgBrk+vtgIqSKHWFGKkR1uIXmt8woDOG8cnprg/8uhS5YRmdCjjlyd15WQ=="
+        "resolved": "1.4.9",
+        "contentHash": "oxor0U3bFxMRLY9TQ9QjDiiX1ojH2se5ei1T0hsSovqE+gAkC7ucqvApWBoClHUPOOsp/taWtzbZ+ZfP0Q4Nsw=="
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "Transitive",
-        "resolved": "9.0.8",
-        "contentHash": "xY3lTjj4+ZYmiKIkyWitddrp1uL5uYiweQjqo4BKBw01ZC4HhcfgLghDpPZcUlppgWAFqFy9SgkiYWOMx365pw=="
+        "resolved": "10.0.11",
+        "contentHash": "/a1aJz4m7ylhEDf25ugQChLQoN5XwoGjWw/BoR/ZWWKsO1v4DdJElS1uyngahz4B/eOzjFk1KNTkarRLE5wsIg=="
       },
       "Microsoft.Extensions.DependencyModel": {
         "type": "Transitive",
-        "resolved": "8.0.2",
-        "contentHash": "mUBDZZRgZrSyFOsJ2qJJ9fXfqd/kXJwf3AiDoqLD9m6TjY5OO/vLNOb9fb4juC0487eq4hcGN/M2Rh/CKS7QYw=="
+        "resolved": "10.0.0",
+        "contentHash": "RFYJR7APio/BiqdQunRq6DB+nDB6nc2qhHr77mlvZ0q0BT8PubMXN7XicmfzCbrDE/dzhBnUKBRXLTcqUiZDGg=="
       },
       "autoretainerapi": {
         "type": "Project",
