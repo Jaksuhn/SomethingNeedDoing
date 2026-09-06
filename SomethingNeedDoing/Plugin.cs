@@ -4,6 +4,7 @@ using ECommons.Configuration;
 using ECommons.Singletons;
 using Microsoft.Extensions.DependencyInjection;
 using SomethingNeedDoing.Services;
+using SndIpc = SomethingNeedDoing.External.SomethingNeedDoing;
 
 namespace SomethingNeedDoing;
 
@@ -32,6 +33,7 @@ public sealed class Plugin : IDalamudPlugin
         _ = _serviceProvider.GetRequiredService<WindowService>();
         _ = _serviceProvider.GetRequiredService<CommandService>();
         _ = _serviceProvider.GetRequiredService<StubGeneratorService>();
+        _ = _serviceProvider.GetRequiredService<SndIpc>();
         SingletonServiceManager.Initialize(typeof(StaticsService)); // rip 100% DI
     }
 
