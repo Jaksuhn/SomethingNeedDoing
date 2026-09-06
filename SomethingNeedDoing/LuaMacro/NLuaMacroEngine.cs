@@ -14,8 +14,13 @@ namespace SomethingNeedDoing.LuaMacro;
 /// <summary>
 /// Executes Lua script macros using NLua.
 /// </summary>
-public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager cleanupManager, MacroHierarchyManager macroHierarchy) : IMacroEngine
+[RegisterSingleton, AutoConstruct]
+public partial class NLuaMacroEngine : IMacroEngine
 {
+    private readonly LuaModuleManager _moduleManager;
+    private readonly CleanupManager _cleanupManager;
+    private readonly MacroHierarchyManager _macroHierarchy;
+
     /// <inheritdoc/>
     public event EventHandler<MacroErrorEventArgs>? MacroError;
 
@@ -56,7 +61,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
             throw new ArgumentException("This engine only supports Lua macros", nameof(macro));
 
         if (macro is not TemporaryMacro)
-            cleanupManager.RegisterCleanupFunctions(macro);
+            _cleanupManager.RegisterCleanupFunctions(macro);
 
         var state = new MacroInstance(macro);
 
@@ -89,7 +94,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
             lua.RegisterInternalFunctions();
             lua.SetTriggerEventData(triggerArgs);
             lua.RegisterClass<Svc>();
-            moduleManager.RegisterAll(lua);
+            _moduleManager.RegisterAll(lua);
 
             var nativeEngine = new NativeEngine();
             nativeEngine.MacroExecutionRequested += (sender, e) =>
@@ -155,7 +160,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
                             if (MacroExecutionRequested is { })
                             {
                                 var tempId = $"{macro.Macro.Id}_native_{Guid.NewGuid()}";
-                                var tempMacro = new TemporaryMacro(macro.Macro, text, macroHierarchy, tempId);
+                                var tempMacro = new TemporaryMacro(macro.Macro, text, _macroHierarchy, tempId);
                                 _temporaryMacros[tempId] = tempMacro;
                                 await tempMacro.Run(MacroExecutionRequested);
                                 _temporaryMacros.Remove(tempId, out var _);
@@ -308,7 +313,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
 
                         if (result[0] is string command && MacroExecutionRequested is { })
                         {
-                            var tempMacro = new TemporaryMacro(macro, command, macroHierarchy, $"{macro.Id}_cleanup_cmd_{Guid.NewGuid()}")
+                            var tempMacro = new TemporaryMacro(macro, command, _macroHierarchy, $"{macro.Id}_cleanup_cmd_{Guid.NewGuid()}")
                             {
                                 Name = $"{macro.Name} - Cleanup Command",
                                 Type = MacroType.Native
@@ -336,7 +341,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
 
         if (macro is not TemporaryMacro)
         {
-            cleanupManager.UnregisterCleanupFunctions(macro);
+            _cleanupManager.UnregisterCleanupFunctions(macro);
             FrameworkLogger.Debug($"Unregistered cleanup functions for macro {macro.Name} after execution");
         }
     }
@@ -347,7 +352,7 @@ public class NLuaMacroEngine(LuaModuleManager moduleManager, CleanupManager clea
     /// <param name="macroId">The macro ID.</param>
     /// <returns>List of cleanup function names.</returns>
     private List<string> GetCleanupFunctions(string macroId)
-        => cleanupManager.HasCleanupFunctions(macroId) ? [.. cleanupManager.GetCleanupFunctions(macroId)] : [];
+        => _cleanupManager.HasCleanupFunctions(macroId) ? [.. _cleanupManager.GetCleanupFunctions(macroId)] : [];
 }
 
 /// <summary>

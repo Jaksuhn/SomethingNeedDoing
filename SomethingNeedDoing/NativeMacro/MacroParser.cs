@@ -10,7 +10,8 @@ namespace SomethingNeedDoing.NativeMacro;
 /// <summary>
 /// A two-step parser that first extracts modifiers and then parses the command.
 /// </summary>
-public class MacroParser
+[RegisterSingleton, AutoConstruct]
+public partial class MacroParser
 {
     private static readonly Regex SndModifierRegex = new(
         ModifierDefinitions.BuildRegexPattern(ModifierDefinitions.SndModifiers),

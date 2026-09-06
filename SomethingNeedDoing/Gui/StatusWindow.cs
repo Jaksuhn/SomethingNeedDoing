@@ -8,6 +8,7 @@ using SomethingNeedDoing.Managers;
 
 namespace SomethingNeedDoing.Gui;
 
+[RegisterSingleton]
 public class StatusWindow : Window
 {
     private readonly IMacroScheduler _scheduler;

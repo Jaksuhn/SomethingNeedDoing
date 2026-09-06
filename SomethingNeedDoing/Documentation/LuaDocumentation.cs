@@ -6,7 +6,8 @@ namespace SomethingNeedDoing.Documentation;
 /// <summary>
 /// Provides documentation for Lua modules and functions.
 /// </summary>
-public class LuaDocumentation
+[RegisterSingleton, AutoConstruct]
+public partial class LuaDocumentation
 {
     private readonly Dictionary<string, List<LuaFunctionDoc>> _documentation = [];
 

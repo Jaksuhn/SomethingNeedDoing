@@ -9,14 +9,17 @@ using System.Reflection;
 
 namespace SomethingNeedDoing.Gui.Tabs;
 
-public class HelpLuaTab(LuaDocumentation luaDocs)
+[RegisterSingleton, AutoConstruct]
+public partial class HelpLuaTab
 {
+    private readonly LuaDocumentation _luaDocs;
+
     public void DrawTab()
     {
         using var child = ImRaii.Child(nameof(HelpLuaTab));
         ImGuiUtils.Section("Lua Scripting", () => ImGui.TextWrapped($"Below are all of the functions and properties provided by the framework. Click any to copy the full call path to clipboard. Hover any function to learn more about it."));
 
-        foreach (var module in luaDocs.GetModules().OrderBy(m => m.Key))
+        foreach (var module in _luaDocs.GetModules().OrderBy(m => m.Key))
         {
             if (module.Key is "IPC" or "Engines")
             {

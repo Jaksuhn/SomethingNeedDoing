@@ -1,7 +1,10 @@
-﻿global using Dalamud.Bindings.ImGui;
+global using AutoCtor;
+global using Dalamud.Bindings.ImGui;
 global using Dalamud.Game.ClientState.Conditions;
 global using ECommons.DalamudServices;
 global using ECommons.GameFunctions;
+global using Injectio.Attributes;
+global using Microsoft.Extensions.DependencyInjection;
 global using SomethingNeedDoing.Attributes;
 global using SomethingNeedDoing.Core;
 global using SomethingNeedDoing.Core.Exceptions;

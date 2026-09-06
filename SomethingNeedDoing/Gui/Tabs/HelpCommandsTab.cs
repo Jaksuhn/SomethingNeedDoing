@@ -6,12 +6,14 @@ using System.Reflection;
 
 namespace SomethingNeedDoing.Gui.Tabs;
 
-public class HelpCommandsTab
+[RegisterSingleton, AutoConstruct]
+public partial class HelpCommandsTab
 {
     private readonly Dictionary<string, CommandInfo> Commands = [];
     private readonly Dictionary<string, ModifierInfo> Modifiers = [];
 
-    public HelpCommandsTab()
+    [AutoPostConstruct]
+    private void Initialize()
     {
         var assembly = Assembly.GetExecutingAssembly();
         var commandTypes = assembly.GetTypes().Where(t => typeof(IMacroCommand).IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface);

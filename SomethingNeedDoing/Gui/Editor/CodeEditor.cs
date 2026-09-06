@@ -11,21 +11,21 @@ namespace SomethingNeedDoing.Gui.Editor;
 /// <summary>
 /// DalamudCodeEditor TextEditor wrapper.
 /// </summary>
-public class CodeEditor : IDisposable
+[RegisterSingleton, AutoConstruct]
+public partial class CodeEditor : IDisposable
 {
     private readonly LuaLanguageDefinition _lua;
     private readonly TextEditor _editor = new();
     private readonly MetadataParser _metadataParser;
-    private readonly Dictionary<MacroType, LanguageDefinition> _languages;
+    private Dictionary<MacroType, LanguageDefinition> _languages = null!;
 
     private IMacro? macro = null;
     private CancellationTokenSource? _debounceCts;
     private bool _lastIsDirty = false;
 
-    public CodeEditor(LuaLanguageDefinition lua, MetadataParser metadataParser)
+    [AutoPostConstruct]
+    private void Initialize()
     {
-        _lua = lua;
-        _metadataParser = metadataParser;
         _languages = new() { { MacroType.Lua, _lua }, { MacroType.Native, new NativeMacroLanguageDefinition() } };
         Config.ConfigFileChanged += RefreshContent;
     }

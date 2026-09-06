@@ -1,34 +1,38 @@
-﻿using Dalamud.Interface.Windowing;
+﻿using System.Threading;
+using System.Threading.Tasks;
+using Dalamud.Interface.Windowing;
+using Microsoft.Extensions.Hosting;
 using SomethingNeedDoing.Gui;
 
 namespace SomethingNeedDoing.Services;
 
-public class WindowService : IDisposable
+[RegisterSingleton<IHostedService>(Duplicate = DuplicateStrategy.Append), AutoConstruct]
+public partial class WindowService : IHostedService, IDisposable
 {
     private readonly WindowSystem _ws;
     private readonly MainWindow _mainWindow;
     private readonly StatusWindow _runningMacrosWindow;
     private readonly ChangelogWindow _changelogWindow;
 
-    public WindowService(WindowSystem ws, MainWindow mainWindow, StatusWindow statusWindow, ChangelogWindow changelogWindow)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _ws = ws;
-        _mainWindow = mainWindow;
-        _runningMacrosWindow = statusWindow;
-        _changelogWindow = changelogWindow;
         _ws.AddWindow(_mainWindow);
         _ws.AddWindow(_runningMacrosWindow);
         _ws.AddWindow(_changelogWindow);
         Svc.PluginInterface.UiBuilder.Draw += _ws.Draw;
         Svc.PluginInterface.UiBuilder.OpenMainUi += _mainWindow.Toggle;
         Svc.PluginInterface.UiBuilder.OpenConfigUi += _mainWindow.Toggle;
+        return Task.CompletedTask;
     }
 
-    public void Dispose()
+    public Task StopAsync(CancellationToken cancellationToken)
     {
         Svc.PluginInterface.UiBuilder.Draw -= _ws.Draw;
         Svc.PluginInterface.UiBuilder.OpenMainUi -= _mainWindow.Toggle;
         Svc.PluginInterface.UiBuilder.OpenConfigUi -= _mainWindow.Toggle;
         _ws.RemoveAllWindows();
+        return Task.CompletedTask;
     }
+
+    public void Dispose() => StopAsync(CancellationToken.None).GetAwaiter().GetResult();
 }

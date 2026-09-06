@@ -1,14 +1,14 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Dalamud.Plugin;
 using ECommons;
 using ECommons.Configuration;
-using ECommons.Singletons;
-using Microsoft.Extensions.DependencyInjection;
-using SomethingNeedDoing.Services;
-using SndIpc = SomethingNeedDoing.External.SomethingNeedDoing;
+using Microsoft.Extensions.Hosting;
 
 namespace SomethingNeedDoing;
 
-public sealed class Plugin : IDalamudPlugin
+[AutoConstruct]
+public partial class Plugin : IAsyncDalamudPlugin
 {
     public string Name => Svc.PluginInterface.InternalName;
     internal string Prefix => "SND";
@@ -17,30 +17,41 @@ public sealed class Plugin : IDalamudPlugin
     internal static Config C { get; private set; } = null!;
     internal string Version => Svc.PluginInterface.Manifest.AssemblyVersion.ToString(2);
 
-    private readonly ServiceProvider _serviceProvider;
+    private readonly IDalamudPluginInterface _pluginInterface;
+    private IHost _host = null!;
 
-    public Plugin(IDalamudPluginInterface pluginInterface)
+    public Task LoadAsync(CancellationToken cancellationToken)
     {
         P = this;
-        ECommonsMain.Init(pluginInterface, this, Module.ObjectFunctions, Module.DalamudReflector);
+        ECommonsMain.Init(_pluginInterface, this, Module.ObjectFunctions, Module.DalamudReflector);
 
         EzConfig.DefaultSerializationFactory = new ConfigFactory();
         C = EzConfig.Init<Config>();
         Config.Migrate(C);
-        Config.InitializeFileWatcher();
 
-        _serviceProvider = new ServiceCollection().SetupPluginServices().BuildServiceProvider();
-        _ = _serviceProvider.GetRequiredService<WindowService>();
-        _ = _serviceProvider.GetRequiredService<CommandService>();
-        _ = _serviceProvider.GetRequiredService<StubGeneratorService>();
-        _ = _serviceProvider.GetRequiredService<SndIpc>();
-        SingletonServiceManager.Initialize(typeof(StaticsService)); // rip 100% DI
+        _host = new HostBuilder()
+            .UseContentRoot(_pluginInterface.AssemblyLocation.Directory!.FullName)
+            .ConfigureServices(services =>
+            {
+                services.AddSingleton(C);
+                services.AddHostedService(sp => sp.GetRequiredService<Config>());
+                services.AddSomethingNeedDoing();
+            })
+            .Build();
+
+        return _host.StartAsync(cancellationToken);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        Config.DisposeFileWatcher();
-        _serviceProvider.Dispose();
-        ECommonsMain.Dispose();
+        try
+        {
+            await _host.StopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _host.Dispose();
+            ECommonsMain.Dispose();
+        }
     }
 }

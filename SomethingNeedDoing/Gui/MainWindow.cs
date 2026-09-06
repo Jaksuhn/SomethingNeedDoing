@@ -1,4 +1,4 @@
-﻿using Dalamud.Interface;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using ECommons.ImGuiMethods;
@@ -10,6 +10,7 @@ using System.Diagnostics;
 
 namespace SomethingNeedDoing.Gui;
 
+[RegisterSingleton]
 public class MainWindow : Window
 {
     private readonly HelpTab _helpTab;

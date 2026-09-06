@@ -1,53 +1,51 @@
-﻿using SomethingNeedDoing.Core.Interfaces;
+﻿using System.IO;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.Documentation;
 using SomethingNeedDoing.Documentation.StubGenerators;
-using System.IO;
-using System.Reflection;
 
 namespace SomethingNeedDoing.Services;
 
-public class StubGeneratorService
+[RegisterSingleton<IHostedService>(Duplicate = DuplicateStrategy.Append), AutoConstruct]
+public partial class StubGeneratorService : IHostedService
 {
-    public StubGeneratorService(LuaDocumentation luaDocs)
+    private readonly LuaDocumentation _luaDocs;
+
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         CleanUp();
 
         FrameworkLogger.Debug("Generating stubs");
 
         FrameworkLogger.Debug("Getting refernced types from lua documentation");
-        var registry = GetAllReferencedTypes(luaDocs);
+        var registry = GetAllReferencedTypes(_luaDocs);
 
-        // Global stubs
         FrameworkLogger.Debug("Adding global helper stub");
         new GlobalStubGenerator().GetStubFile().Write();
 
-        // Generate enum stubs
         FrameworkLogger.Debug("Adding referenced enum stubs");
         foreach (var enumType in registry.Where(t => t.IsEnum))
         {
             if (enumType == null)
-            {
                 continue;
-            }
 
             new EnumStubGenerator(enumType).GetStubFile().Write();
         }
 
-        // Generate wrapper stubs
         FrameworkLogger.Debug("Adding referenced wrapper stubs");
         foreach (var wrapperType in registry.Where(t => t.IsWrapper()))
         {
             if (wrapperType == null)
-            {
                 continue;
-            }
 
             new WrapperStubGenerator(wrapperType).GetStubFile().Write();
         }
 
-        // Generate module stubs
         FrameworkLogger.Debug("Adding module stubs");
-        foreach (var module in luaDocs.GetModules())
+        foreach (var module in _luaDocs.GetModules())
         {
             if (module.Key == "IPC")
                 continue;
@@ -55,20 +53,20 @@ public class StubGeneratorService
             new ModuleStubGenerator(module.Key, module.Value).GetStubFile().Write();
         }
 
-        // Generate IPC module stubs
         FrameworkLogger.Debug("Adding IPC module stubs");
-        new IpcStubGenerator(luaDocs).GetStubFile().Write();
+        new IpcStubGenerator(_luaDocs).GetStubFile().Write();
 
-        // Expose Vector type stubs
         FrameworkLogger.Debug("Adding vector stubs");
         new ClassStubGenerator(typeof(Vector2)).WithDocumentationLine("requires the import of \"System.Numerics\"").GetStubFile().Write();
         new ClassStubGenerator(typeof(Vector3)).WithDocumentationLine("requires the import of \"System.Numerics\"").GetStubFile().Write();
         new ClassStubGenerator(typeof(Vector4)).WithDocumentationLine("requires the import of \"System.Numerics\"").GetStubFile().Write();
 
-        // Complex but well used class stubs
         FrameworkLogger.Debug("Adding Svc stubs");
         new ComplexTypeStubGenerator(typeof(Svc)).GetStubFile().Write();
+        return Task.CompletedTask;
     }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     private void CleanUp()
     {

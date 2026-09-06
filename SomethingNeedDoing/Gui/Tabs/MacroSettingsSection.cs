@@ -9,15 +9,26 @@ using System.Threading.Tasks;
 
 namespace SomethingNeedDoing.Gui.Tabs;
 
-public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory dependencyFactory, VersionHistoryModal versionHistoryModal, MetadataParser metadataParser, GitMacroManager gitManager, IEnumerable<IDisableable> disableablePlugins)
+[RegisterSingleton, AutoConstruct]
+public partial class MacroSettingsSection
 {
+    private readonly IMacroScheduler _scheduler;
+    private readonly DependencyFactory _dependencyFactory;
+    private readonly VersionHistoryModal _versionHistoryModal;
+    private readonly MetadataParser _metadataParser;
+    private readonly GitMacroManager _gitManager;
+    private readonly IEnumerable<IDisableable> _disableablePlugins;
+    private List<string> _disableablePluginNames = null!;
+
     private string _pluginDependency = string.Empty;
     private string _pluginToDisable = string.Empty;
     private string _gitUrl = string.Empty;
     private string _localFilePath = string.Empty;
     private DependencyType _dependencyType = DependencyType.Local;
     private LocalDependencyType _localDependencyType = LocalDependencyType.Macro;
-    private readonly List<string> _disableablePluginNames = [.. disableablePlugins.Select(p => p.InternalName)];
+
+    [AutoPostConstruct]
+    private void Initialize() => _disableablePluginNames = [.. _disableablePlugins.Select(p => p.InternalName)];
 
     public Action? OnContentUpdated { get; set; } // for refreshing after writing the metadata
 
@@ -340,7 +351,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
 
             if (ImGui.Button("Write Metadata to Content"))
             {
-                if (metadataParser.WriteMetadata(selectedMacro, OnContentUpdated))
+                if (_metadataParser.WriteMetadata(selectedMacro, OnContentUpdated))
                     FrameworkLogger.Debug($"Wrote metadata to macro {selectedMacro.Name}");
                 else
                     FrameworkLogger.Error($"Failed to write metadata to macro {selectedMacro.Name}");
@@ -351,7 +362,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
 
             if (ImGui.Button("Read Metadata from Content"))
             {
-                selectedMacro.Metadata = metadataParser.ParseMetadata(selectedMacro.Content);
+                selectedMacro.Metadata = _metadataParser.ParseMetadata(selectedMacro.Content);
                 C.Save();
             }
             ImGuiEx.Tooltip("Reads metadata (author, version, description, dependencies, triggers) from the macro content and updates the settings.");
@@ -394,7 +405,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
                         {
                             try
                             {
-                                await gitManager.AddGitInfoToMacro(selectedMacro, repoUrl);
+                                await _gitManager.AddGitInfoToMacro(selectedMacro, repoUrl);
                             }
                             catch (Exception ex)
                             {
@@ -403,7 +414,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
                         });
                     }
                 });
-                group.AddIconWithText(FontAwesomeIcon.History, "Version History", () => versionHistoryModal.Open(selectedMacro));
+                group.AddIconWithText(FontAwesomeIcon.History, "Version History", () => _versionHistoryModal.Open(selectedMacro));
                 group.AddIconWithText(FontAwesomeIcon.Sync, "Reset Git Info",
                     () => { selectedMacro.GitInfo = new GitInfo(); C.Save(); }, "Wipes all git information and reverts this macro back to a standard local macro.",
                     new() { ButtonColor = EzColor.Red });
@@ -452,7 +463,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
         {
             var events = new List<TriggerEvent>(selectedMacro.Metadata.TriggerEvents);
             if (ImGuiUtils.EnumCheckboxes(ref events, [TriggerEvent.None]))
-                selectedMacro.SetTriggerEvents(scheduler, events);
+                selectedMacro.SetTriggerEvents(_scheduler, events);
 
             // Show addon event configuration only when OnAddonEvent is selected
             if (events.Contains(TriggerEvent.OnAddonEvent))
@@ -651,7 +662,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
                     ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X);
                     if (ImGuiEx.Combo("##LocalMacroSelector", ref selectedMacroId, localMacros.Select(m => m.Id), names: macroNames))
                     {
-                        selectedMacro.Metadata.Dependencies.Add(dependencyFactory.CreateDependency(selectedMacroId));
+                        selectedMacro.Metadata.Dependencies.Add(_dependencyFactory.CreateDependency(selectedMacroId));
                         C.Save();
                     }
                 }
@@ -665,7 +676,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
                     {
                         if (!string.IsNullOrWhiteSpace(_localFilePath))
                         {
-                            selectedMacro.Metadata.Dependencies.Add(dependencyFactory.CreateDependency(_localFilePath));
+                            selectedMacro.Metadata.Dependencies.Add(_dependencyFactory.CreateDependency(_localFilePath));
                             C.Save();
                             _localFilePath = string.Empty;
                         }
@@ -682,7 +693,7 @@ public class MacroSettingsSection(IMacroScheduler scheduler, DependencyFactory d
                 {
                     if (!string.IsNullOrWhiteSpace(_gitUrl))
                     {
-                        selectedMacro.Metadata.Dependencies.Add(dependencyFactory.CreateDependency(_gitUrl));
+                        selectedMacro.Metadata.Dependencies.Add(_dependencyFactory.CreateDependency(_gitUrl));
                         C.Save();
                         _gitUrl = string.Empty;
                     }

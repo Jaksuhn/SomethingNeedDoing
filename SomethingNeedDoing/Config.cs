@@ -1,25 +1,28 @@
 using Dalamud.Game.Text;
 using ECommons.Configuration;
+using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using SomethingNeedDoing.Core.Interfaces;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SomethingNeedDoing;
 /// <summary>
 /// Configuration for the plugin.
 /// </summary>
-public class Config
+public class Config : IHostedService
 {
     public int Version { get; set; } = 2;
 
     public static event Action? ConfigFileChanged;
 
-    private static FileSystemWatcher? _configWatcher;
-    private static DateTime _lastConfigChange = DateTime.MinValue;
+    private FileSystemWatcher? _configWatcher;
+    private DateTime _lastConfigChange = DateTime.MinValue;
 
-    public static void InitializeFileWatcher()
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -37,15 +40,23 @@ public class Config
         {
             Svc.Log.Error(ex, "Failed to initialize config file watcher");
         }
+
+        return Task.CompletedTask;
     }
 
-    public static void DisposeFileWatcher()
+    public Task StopAsync(CancellationToken cancellationToken)
     {
-        _configWatcher?.Dispose();
+        if (_configWatcher is null)
+            return Task.CompletedTask;
+
+        _configWatcher.Changed -= OnConfigFileChanged;
+        _configWatcher.Created -= OnConfigFileChanged;
+        _configWatcher.Dispose();
         _configWatcher = null;
+        return Task.CompletedTask;
     }
 
-    private static void OnConfigFileChanged(object sender, FileSystemEventArgs e)
+    private void OnConfigFileChanged(object sender, FileSystemEventArgs e)
     {
         if ((DateTime.Now - _lastConfigChange).TotalMilliseconds < 500) // debounce rapid changes
             return;

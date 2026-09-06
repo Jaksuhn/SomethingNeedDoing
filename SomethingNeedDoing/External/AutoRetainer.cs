@@ -1,7 +1,7 @@
-﻿using AutoRetainerAPI.Configuration;
+﻿using AutoRetainerAPI;
+using AutoRetainerAPI.Configuration;
 using ECommons.EzIpcManager;
 using SomethingNeedDoing.Core.Interfaces;
-using SomethingNeedDoing.Services;
 using GCInfo = (uint ShopDataID, uint ExchangeDataID, System.Numerics.Vector3 Position);
 
 namespace SomethingNeedDoing.External;
@@ -10,6 +10,8 @@ public class AutoRetainer : IPC
 {
     public override string Name => "AutoRetainer";
     public override string Repo => Repos.Punish;
+
+    private readonly AutoRetainerApi _api = new();
 
     [EzIPC]
     [LuaFunction(description: "Gets whether multi-mode is enabled")]
@@ -110,19 +112,19 @@ public class AutoRetainer : IPC
 
     [LuaFunction(description: "Gets all registered characters")]
     [Changelog("12.19")]
-    public List<ulong> GetRegisteredCharacters() => StaticsService.AutoRetainerApi.GetRegisteredCharacters();
+    public List<ulong> GetRegisteredCharacters() => _api.GetRegisteredCharacters();
 
     [LuaFunction(
         description: "Gets offline character data for a specific character ID",
         parameterDescriptions: ["cid"])]
     [Changelog("12.19")]
-    public OfflineCharacterDataWrapper GetOfflineCharacterData(ulong cid) => new(StaticsService.AutoRetainerApi.GetOfflineCharacterData(cid));
+    public OfflineCharacterDataWrapper GetOfflineCharacterData(ulong cid) => new(_api.GetOfflineCharacterData(cid));
 
     [LuaFunction(
         description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration",
         parameterDescriptions: ["boolean"])]
     [Changelog("13.3")]
-    public void SetSuppressed(bool suppressed) => StaticsService.AutoRetainerApi.Suppressed = suppressed;
+    public void SetSuppressed(bool suppressed) => _api.Suppressed = suppressed;
 
     public class OfflineCharacterDataWrapper(OfflineCharacterData data) : IWrapper
     {

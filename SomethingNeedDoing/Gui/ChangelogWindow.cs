@@ -1,4 +1,4 @@
-﻿using Dalamud.Interface.Utility.Raii;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using ECommons.ImGuiMethods;
 using SomethingNeedDoing.Documentation;
@@ -6,6 +6,7 @@ using System.Reflection;
 
 namespace SomethingNeedDoing.Gui;
 
+[RegisterSingleton]
 public class ChangelogWindow : Window
 {
     private readonly Dictionary<string, List<ChangelogClassGroup>> _versionedGroups = [];

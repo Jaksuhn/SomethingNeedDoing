@@ -1,17 +1,25 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Dalamud.Interface.Windowing;
 using ECommons;
+using Microsoft.Extensions.Hosting;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.Gui;
 
 namespace SomethingNeedDoing.Services;
 
-public class CommandService
+[RegisterSingleton, AutoConstruct]
+[RegisterSingleton<IHostedService>(Duplicate = DuplicateStrategy.Append, Factory = nameof(GetHostedService))]
+public partial class CommandService : IHostedService
 {
+    public static IHostedService GetHostedService(IServiceProvider provider) => provider.GetRequiredService<CommandService>();
+
     public string MainCommand => "/somethingneeddoing";
     public string[] Aliases => ["/snd", "/pcraft"];
 
     private readonly IMacroScheduler _macroScheduler;
     private readonly WindowSystem _windowSystem;
+    private SubCommand _rootCommand = null!;
 
     private class SubCommand(string command, string description, Action<string> handler, bool showInHelp = true)
     {
@@ -22,13 +30,8 @@ public class CommandService
         public List<SubCommand> SubCommands { get; } = [];
     }
 
-    private readonly SubCommand _rootCommand;
-
-    public CommandService(IMacroScheduler macroScheduler, WindowSystem windowSystem)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _macroScheduler = macroScheduler;
-        _windowSystem = windowSystem;
-
         _rootCommand = new("", "Open the main window", _ => _windowSystem.Toggle<MainWindow>());
         var runCommand = new SubCommand("run", "Run a macro, the name must be unique.", HandleRunCommand);
         runCommand.SubCommands.Add(new("loop", "Run a macro and then loop N times, the name must be unique.", HandleRunLoopCommand));
@@ -45,14 +48,17 @@ public class CommandService
         stopCommand.SubCommands.Add(new("all", "Stop all running macros.", _ => _macroScheduler.StopAllMacros()));
 
         var helpCommand = new SubCommand("help", "Show the help window.", _ => ShowHelp(), false);
-        //var cfgCommand = new SubCommand("cfg", "Change a configuration value.", HandleConfigCommand);
         var statusCommand = new SubCommand("status", "Toggle the running macros window.", _ => _windowSystem.Toggle<StatusWindow>());
         var changelogCommand = new SubCommand("changelog", "Toggle the changelog window.", _ => _windowSystem.Toggle<ChangelogWindow>());
 
         _rootCommand.SubCommands.AddRange([runCommand, pauseCommand, stopCommand, helpCommand, resumeCommand, statusCommand, changelogCommand]);
 
-        RegisterCommands();
+        EzCmd.Add(MainCommand, OnChatCommand, "Open a window to edit various settings.", displayOrder: int.MinValue);
+        Aliases.ToList().ForEach(a => EzCmd.Add(a, OnChatCommand, $"{MainCommand} Alias"));
+        return Task.CompletedTask;
     }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public List<(string Command, string Description)> GetCommandData()
     {
@@ -64,12 +70,6 @@ public class CommandService
                 result.Add(($"{cmd.Command} {subCmd.Command}", subCmd.Description));
         }
         return result;
-    }
-
-    public void RegisterCommands()
-    {
-        EzCmd.Add(MainCommand, OnChatCommand, "Open a window to edit various settings.", displayOrder: int.MinValue);
-        Aliases.ToList().ForEach(a => EzCmd.Add(a, OnChatCommand, $"{MainCommand} Alias"));
     }
 
     private void OnChatCommand(string command, string arguments)
@@ -200,15 +200,4 @@ public class CommandService
         else
             Svc.Chat.PrintErrorMsg($"Macro '{macroName}' not found.");
     }
-
-    //private void HandleConfigCommand(string arguments)
-    //{
-    //    var args = arguments.Split(" ");
-    //    if (args.Length != 2)
-    //    {
-    //        Svc.Chat.PrintErrorMsg("Invalid config command format. Usage: /snd cfg <setting> <value>");
-    //        return;
-    //    }
-    //    C.SetProperty(args[0], args[1]);
-    //}
 }

@@ -1,9 +1,10 @@
-﻿using ECommons.EzIpcManager;
+using ECommons.EzIpcManager;
 using SomethingNeedDoing.Core.Interfaces;
 using System.Threading.Tasks;
 
 namespace SomethingNeedDoing.External;
 
+[RegisterSingleton<IDisableable>(Duplicate = DuplicateStrategy.Append)]
 public class TextAdvance : IPC, IDisableable
 {
     public override string Name => "TextAdvance";

@@ -8,8 +8,11 @@ namespace SomethingNeedDoing.NativeMacro;
 /// <summary>
 /// Executes native-style macros with command syntax similar to game macros.
 /// </summary>
-public class NativeMacroEngine(MacroParser parser) : IMacroEngine
+[RegisterSingleton, AutoConstruct]
+public partial class NativeMacroEngine : IMacroEngine
 {
+    private readonly MacroParser _parser;
+
     /// <inheritdoc/>
     public event EventHandler<MacroErrorEventArgs>? MacroError;
 
@@ -137,7 +140,7 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
     private List<IMacroCommand> ModifyMacroForCraftLoop(IMacro macro)
     {
         if (!macro.Metadata.CraftingLoop)
-            return parser.Parse(macro.ContentSansMetadata());
+            return _parser.Parse(macro.ContentSansMetadata());
 
         var craftCount = macro.Metadata.CraftLoopCount;
         var contents = macro.ContentSansMetadata();
@@ -147,14 +150,14 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
             var template = C.CraftLoopTemplate;
 
             if (craftCount == 0)
-                return parser.Parse(contents);
+                return _parser.Parse(contents);
 
             if (craftCount == -1)
                 craftCount = 999_999;
 
             return !template.Contains("{{macro}}")
                 ? throw new MacroSyntaxError("CraftLoop template does not contain the {{macro}} placeholder")
-                : parser.Parse(template.Replace("{{macro}}", contents).Replace("{{count}}", craftCount.ToString()));
+                : _parser.Parse(template.Replace("{{macro}}", contents).Replace("{{count}}", craftCount.ToString()));
         }
 
         var maxwait = C.CraftLoopMaxWait;
@@ -221,7 +224,7 @@ public class NativeMacroEngine(MacroParser parser) : IMacroEngine
             }
         }
 
-        return parser.Parse(sb.ToString());
+        return _parser.Parse(sb.ToString());
     }
 
     /// <inheritdoc/>

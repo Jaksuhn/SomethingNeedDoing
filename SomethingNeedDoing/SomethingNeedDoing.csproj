@@ -3,6 +3,7 @@
 	<PropertyGroup>
 		<Version>0.0.0.0</Version>
 		<LangVersion>preview</LangVersion>
+		<DefineConstants>$(DefineConstants);AUTOCTOR_EMBED_ATTRIBUTES</DefineConstants>
 
 		<Author>croizat</Author>
 		<Name>SomethingNeedDoing</Name>
@@ -12,6 +13,7 @@
 		<IconUrl>https://s3.puni.sh/media/plugin/34/icon-z405dwrdjem.png</IconUrl>
 		<RepoUrl>https://github.com/Jaksuhn/SomethingNeedDoing</RepoUrl>
 		<Tags>crafting;automation;lua;macros;scripting</Tags>
+		<CanUnloadAsync>true</CanUnloadAsync>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))'">
@@ -23,14 +25,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="AutoCtor" Version="3.1.0" PrivateAssets="all" ExcludeAssets="compile;runtime" />
 		<PackageReference Include="ECommons" Version="3.2.1.18" />
-		<PackageReference Include="Injectio" Version="6.2.0">
-		  <PrivateAssets>all</PrivateAssets>
-		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		</PackageReference>
+		<PackageReference Include="Injectio" Version="6.2.0" PrivateAssets="all" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
 		<PackageReference Include="NLua" Version="1.7.9" />
-		<PackageReference Include="Scrutor" Version="7.0.0" />
 		<PackageReference Include="YamlDotNet" Version="18.1.0" />
 	</ItemGroup>
 

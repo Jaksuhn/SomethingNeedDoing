@@ -5,13 +5,10 @@ namespace SomethingNeedDoing.Core;
 /// <summary>
 /// Factory for creating dependencies.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="DependencyFactory"/> class.
-/// </remarks>
-/// <param name="httpClient">The HTTP client.</param>
-/// <param name="gitService">The Git service.</param>
-public class DependencyFactory(IGitService gitService)
+[RegisterSingleton, AutoConstruct]
+public partial class DependencyFactory
 {
+    private readonly IGitService _gitService;
 
     /// <summary>
     /// Creates a dependency from a source string, automatically detecting the type.
@@ -43,7 +40,7 @@ public class DependencyFactory(IGitService gitService)
                         FilePath = path ?? string.Empty
                     }
                 };
-                gitDep.SetGitService(gitService);
+                gitDep.SetGitService(_gitService);
                 return gitDep;
             }
         }

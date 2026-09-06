@@ -15,10 +15,14 @@ namespace SomethingNeedDoing.Gui;
 /// <summary>
 /// Macro editor with IDE-like features
 /// </summary>
-public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, WindowSystem ws, CodeEditor editor, MacroSettingsSection settingsSection)
+[RegisterSingleton, AutoConstruct]
+public partial class MacroEditor
 {
-    private readonly IMacroScheduler _scheduler = scheduler;
-    private readonly GitMacroManager _gitManager = gitManager;
+    private readonly IMacroScheduler _scheduler;
+    private readonly GitMacroManager _gitManager;
+    private readonly WindowSystem _ws;
+    private readonly CodeEditor _editor;
+    private readonly MacroSettingsSection _settingsSection;
     private UpdateState _updateState = UpdateState.Unknown;
     private bool _showSettings;
 
@@ -40,15 +44,15 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
             return;
         }
 
-        editor.SetMacro(macro);
-        editor.ReadOnly = _scheduler.GetMacroState(macro.Id) is MacroState.Running;
-        settingsSection.OnContentUpdated = editor.RefreshContent;
+        _editor.SetMacro(macro);
+        _editor.ReadOnly = _scheduler.GetMacroState(macro.Id) is MacroState.Running;
+        _settingsSection.OnContentUpdated = _editor.RefreshContent;
 
         DrawEditorToolbar(macro);
         ImGui.Separator();
 
         if (_showSettings && macro is ConfigMacro m)
-            settingsSection.Draw(m);
+            _settingsSection.Draw(m);
         else
         {
             var editorHeight = ImGui.GetContentRegionAvail().Y - ImGui.GetFrameHeightWithSpacing() * 2;
@@ -113,20 +117,20 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
         using (ImRaii.PushColor(ImGuiCol.Text, statusColor))
         {
             if (ImGuiUtils.IconButton(statusIcon, macroCount > 0 ? $"{macroCount} running" : "No macros running"))
-                ws.Toggle<StatusWindow>();
+                _ws.Toggle<StatusWindow>();
         }
 
         ImGui.SameLine();
-        if (ImGuiUtils.IconButton(editor.IsShowingLineNumbers ? FontAwesomeHelper.IconSortAsc : FontAwesomeHelper.IconSortDesc, "Toggle Line Numbers"))
-            editor.IsShowingLineNumbers ^= true;
+        if (ImGuiUtils.IconButton(_editor.IsShowingLineNumbers ? FontAwesomeHelper.IconSortAsc : FontAwesomeHelper.IconSortDesc, "Toggle Line Numbers"))
+            _editor.IsShowingLineNumbers ^= true;
 
         ImGui.SameLine();
-        if (ImGuiUtils.IconButton(editor.IsShowingWhitespace ? FontAwesomeHelper.IconInvisible : FontAwesomeHelper.IconVisible, "Show Whitespace"))
-            editor.IsShowingWhitespace ^= true;
+        if (ImGuiUtils.IconButton(_editor.IsShowingWhitespace ? FontAwesomeHelper.IconInvisible : FontAwesomeHelper.IconVisible, "Show Whitespace"))
+            _editor.IsShowingWhitespace ^= true;
 
         ImGui.SameLine();
-        if (ImGuiUtils.IconButton(editor.IsHighlightingSyntax ? FontAwesomeHelper.IconCheck : FontAwesomeHelper.IconXmark, "Syntax Highlighting"))
-            editor.IsHighlightingSyntax ^= true;
+        if (ImGuiUtils.IconButton(_editor.IsHighlightingSyntax ? FontAwesomeHelper.IconCheck : FontAwesomeHelper.IconXmark, "Syntax Highlighting"))
+            _editor.IsHighlightingSyntax ^= true;
 
         ImGui.SameLine();
         if (ImGuiUtils.IconButton(FontAwesomeIcon.Cog, "Settings"))
@@ -170,9 +174,9 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
 
         if (macro is ConfigMacro configMacro)
         {
-            if (editor.Draw())
+            if (_editor.Draw())
             {
-                configMacro.Content = editor.GetContent();
+                configMacro.Content = _editor.GetContent();
                 C.Save();
             }
         }
@@ -184,7 +188,7 @@ public class MacroEditor(IMacroScheduler scheduler, GitMacroManager gitManager, 
         using var _ = ImRaii.PushColor(ImGuiCol.FrameBg, new Vector4(0.1f, 0.1f, 0.1f, 1.0f));
 
         var chars = macro.Content.Length;
-        ImGuiEx.Text(ImGuiColors.DalamudGrey, $"Name: {macro.Name}  |  Lines: {editor.Lines}  |  Chars: {chars}  |  Column: {editor.Column}  |  Readonly: {editor.ReadOnly}  |");
+        ImGuiEx.Text(ImGuiColors.DalamudGrey, $"Name: {macro.Name}  |  Lines: {_editor.Lines}  |  Chars: {chars}  |  Column: {_editor.Column}  |  Readonly: {_editor.ReadOnly}  |");
         ImGui.SameLine(0, 5);
         ImGuiEx.Text(ImGuiColors.DalamudGrey, $"Type: {macro.Type}");
         if (ImGui.IsItemClicked())

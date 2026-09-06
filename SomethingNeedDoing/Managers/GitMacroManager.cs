@@ -9,9 +9,11 @@ namespace SomethingNeedDoing.Managers;
 /// <summary>
 /// Manages Git macros, including downloading, updating, and version control.
 /// </summary>
-public class GitMacroManager : IDisposable
+[RegisterSingleton, AutoConstruct]
+public partial class GitMacroManager : IDisposable
 {
     private readonly IMacroScheduler _scheduler;
+    private readonly IGitService _gitService;
     private readonly HttpClient _httpClient = new()
     {
         DefaultRequestHeaders =
@@ -31,21 +33,16 @@ public class GitMacroManager : IDisposable
     /// </summary>
     public event EventHandler<GitMacroUpdateEventArgs>? MacroUpdateFailed;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="GitMacroManager"/> class.
-    /// </summary>
-    /// <param name="scheduler">The macro scheduler.</param>
-    /// <param name="gitService">The git service.</param>
-    public GitMacroManager(IMacroScheduler scheduler, IGitService gitService)
+    [AutoPostConstruct]
+    private void Initialize()
     {
-        _scheduler = scheduler;
         _ = UpdateAllMacros();
 
         // TODO: This is like this because having a parametered construct meant that IMacroDependencies couldn't be deserialized by the json deserializer
         foreach (var macro in C.Macros)
             foreach (var dependency in macro.Metadata.Dependencies)
                 if (dependency is GitDependency gitDependency)
-                    gitDependency.SetGitService(gitService);
+                    gitDependency.SetGitService(_gitService);
     }
 
     /// <summary>

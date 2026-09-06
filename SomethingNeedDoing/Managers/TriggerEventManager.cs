@@ -63,7 +63,8 @@ public class TriggerFunction(IMacro macro, string functionName, TriggerEvent eve
 /// <summary>
 /// Manages trigger events for macros.
 /// </summary>
-public class TriggerEventManager : IDisposable
+[RegisterSingleton, AutoConstruct]
+public partial class TriggerEventManager : IDisposable
 {
     public Dictionary<TriggerEvent, List<TriggerFunction>> EventHandlers { get; } = [];
 

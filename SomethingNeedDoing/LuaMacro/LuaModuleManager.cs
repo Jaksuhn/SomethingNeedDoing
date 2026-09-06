@@ -7,14 +7,15 @@ namespace SomethingNeedDoing.LuaMacro;
 /// <summary>
 /// Manages Lua modules and their registration.
 /// </summary>
-public class LuaModuleManager
+[RegisterSingleton, AutoConstruct]
+public partial class LuaModuleManager
 {
     private readonly List<ILuaModule> _modules = [];
     private readonly LuaDocumentation _documentation;
 
-    public LuaModuleManager(LuaDocumentation documentation)
+    [AutoPostConstruct]
+    private void Initialize()
     {
-        _documentation = documentation;
         RegisterModule(new ActionsModule());
         RegisterModule(new AddonModule());
         RegisterModule(new DalamudModule());

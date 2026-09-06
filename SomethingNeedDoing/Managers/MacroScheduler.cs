@@ -25,7 +25,8 @@ namespace SomethingNeedDoing.Managers;
 /// <summary>
 /// Manages and coordinates execution of multiple macros.
 /// </summary>
-public class MacroScheduler : IMacroScheduler, IDisposable
+[RegisterSingleton<IMacroScheduler>, AutoConstruct]
+public partial class MacroScheduler : IMacroScheduler, IDisposable
 {
     private readonly ConcurrentDictionary<string, MacroExecutionState> _macroStates = [];
     private readonly ConcurrentDictionary<string, IMacroEngine> _enginesByMacroId = [];
@@ -47,6 +48,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     private readonly MacroHierarchyManager _hierarchyManager;
     private readonly WindowSystem _windowSystem;
     private readonly MetadataParser _metadataParser;
+    private readonly IEnumerable<IDisableable> _disableablePluginSources;
 
     private readonly HashSet<string> _functionTriggersRegistered = [];
     private readonly ConcurrentDictionary<string, List<(AddonEvent EventType, string AddonName)>> _functionLevelAddonListeners = [];
@@ -63,17 +65,11 @@ public class MacroScheduler : IMacroScheduler, IDisposable
     [Signature("48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 56 48 83 EC 30 4C 8B 74 24 ?? 48 8B D9", DetourName = nameof(OnEmoteFuncDetour))]
     private readonly Hook<OnEmoteFuncDelegate> OnEmoteFuncHook = null!;
 
-    public MacroScheduler(NativeMacroEngine nativeEngine, NLuaMacroEngine luaEngine, TriggerEventManager triggerEventManager, MacroHierarchyManager hierarchyManager, WindowSystem windowSystem, MetadataParser metadataParser, IEnumerable<IDisableable> disableablePlugins)
+    [AutoPostConstruct]
+    private void Initialize()
     {
         Svc.Hook.InitializeFromAttributes(this);
         OnEmoteFuncHook?.Enable();
-
-        _nativeEngine = nativeEngine;
-        _luaEngine = luaEngine;
-        _triggerEventManager = triggerEventManager;
-        _hierarchyManager = hierarchyManager;
-        _windowSystem = windowSystem;
-        _metadataParser = metadataParser;
 
         _nativeEngine.MacroError += OnEngineError;
         _luaEngine.MacroError += OnEngineError;
@@ -91,7 +87,7 @@ public class MacroScheduler : IMacroScheduler, IDisposable
         _nativeEngine.LoopControlRequested += OnLoopControlRequested;
         _luaEngine.LoopControlRequested += OnLoopControlRequested;
 
-        foreach (var plugin in disableablePlugins)
+        foreach (var plugin in _disableablePluginSources)
             _disableablePlugins[plugin.InternalName] = plugin;
 
         SubscribeToTriggerEvents();

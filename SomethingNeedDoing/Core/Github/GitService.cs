@@ -8,20 +8,17 @@ namespace SomethingNeedDoing.Core.Github;
 /// <summary>
 /// Implementation of the Git service using the GitHub API.
 /// </summary>
-public class GitService : IGitService
+[RegisterSingleton<IGitService>, AutoConstruct]
+public partial class GitService : IGitService
 {
-    private readonly HttpClient _httpClient;
-    private const string GitHubApiBaseUrl = "https://api.github.com";
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="GitService"/> class.
-    /// </summary>
-    /// <param name="httpClient">The HTTP client.</param>
-    public GitService(HttpClient httpClient)
+    private readonly HttpClient _httpClient = new()
     {
-        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "SomethingNeedDoing");
-    }
+        DefaultRequestHeaders =
+        {
+            { "User-Agent", "SomethingNeedDoing" }
+        }
+    };
+    private const string GitHubApiBaseUrl = "https://api.github.com";
 
     /// <inheritdoc/>
     public async Task<string> GetFileContentAsync(string repositoryUrl, string branch, string path)

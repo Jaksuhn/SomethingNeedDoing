@@ -10,8 +10,11 @@ namespace SomethingNeedDoing.Core;
 /// <summary>
 /// Parser for macro metadata using YAML format.
 /// </summary>
-public class MetadataParser(DependencyFactory dependencyFactory)
+[RegisterSingleton, AutoConstruct]
+public partial class MetadataParser
 {
+    private readonly DependencyFactory _dependencyFactory;
+
     public static readonly Regex MetadataBlockRegex = new(
         @"(?:--\[=====\[|/\*).*?\[\[SND\s*Metadata\]\](.*?)\[\[End\s*Metadata\]\].*?(?:\]=====\]|\*/)",
         RegexOptions.Singleline | RegexOptions.IgnoreCase);
@@ -324,7 +327,7 @@ public class MetadataParser(DependencyFactory dependencyFactory)
                 {
                     var source = depDict.TryGetValue("source", out var s) ? s?.ToString() : string.Empty;
                     if (!string.IsNullOrEmpty(source))
-                        result.Add(dependencyFactory.CreateDependency(source));
+                        result.Add(_dependencyFactory.CreateDependency(source));
                 }
             }
         }

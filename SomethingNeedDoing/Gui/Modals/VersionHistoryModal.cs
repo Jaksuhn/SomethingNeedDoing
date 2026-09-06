@@ -5,8 +5,10 @@ using System.Threading.Tasks;
 
 namespace SomethingNeedDoing.Gui.Modals;
 
-public class VersionHistoryModal(GitMacroManager gitManager)
+[RegisterSingleton, AutoConstruct]
+public partial class VersionHistoryModal
 {
+    private readonly GitMacroManager _gitManager;
     private static Vector2 Size = new(600, 400);
     private static bool IsOpen;
     private static ConfigMacro? _macro;
@@ -38,7 +40,7 @@ public class VersionHistoryModal(GitMacroManager gitManager)
 
         try
         {
-            _commits = await gitManager.GetCommitHistory(_macro);
+            _commits = await _gitManager.GetCommitHistory(_macro);
         }
         catch (Exception ex)
         {
@@ -119,7 +121,7 @@ public class VersionHistoryModal(GitMacroManager gitManager)
 
         try
         {
-            await gitManager.UpdateToCommit(_macro, commitHash);
+            await _gitManager.UpdateToCommit(_macro, commitHash);
             IsOpen = false;
         }
         catch (Exception ex)

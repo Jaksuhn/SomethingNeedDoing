@@ -2,8 +2,13 @@
 
 namespace SomethingNeedDoing.Gui.Tabs;
 
-public class HelpTab(HelpLuaTab _luaTab, HelpCliTab _cliTab, HelpCommandsTab _commandsTab)
+[RegisterSingleton, AutoConstruct]
+public partial class HelpTab
 {
+    private readonly HelpLuaTab _luaTab;
+    private readonly HelpCliTab _cliTab;
+    private readonly HelpCommandsTab _commandsTab;
+
     public void Draw()
     {
         ImGuiEx.EzTabBar("Tabs",

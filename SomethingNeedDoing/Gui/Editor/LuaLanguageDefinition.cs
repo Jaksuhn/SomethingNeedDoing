@@ -3,14 +3,18 @@ using SomethingNeedDoing.Documentation;
 
 namespace SomethingNeedDoing.Gui.Editor;
 
-public class LuaLanguageDefinition : DalamudCodeEditor.LuaLanguageDefinition
+[RegisterSingleton, AutoConstruct]
+public partial class LuaLanguageDefinition : DalamudCodeEditor.LuaLanguageDefinition
 {
-    public LuaLanguageDefinition(LuaDocumentation luaDocs)
+    private readonly LuaDocumentation _luaDocs;
+
+    [AutoPostConstruct]
+    private void Initialize()
     {
         var sndSpecificSymbols = new List<string>(["Svc", "luanet", "import", "CLRPackage", "yield"]);
 
         // Add module keys
-        foreach (var module in luaDocs.GetModules())
+        foreach (var module in _luaDocs.GetModules())
         {
             sndSpecificSymbols.Add(module.Key);
         }

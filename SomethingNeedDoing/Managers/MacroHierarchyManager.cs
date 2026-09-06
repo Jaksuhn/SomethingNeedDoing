@@ -7,7 +7,8 @@ namespace SomethingNeedDoing.Managers;
 /// <summary>
 /// Manages the hierarchy and relationships between macros and their temporary children.
 /// </summary>
-public class MacroHierarchyManager
+[RegisterSingleton, AutoConstruct]
+public partial class MacroHierarchyManager
 {
     private readonly ConcurrentDictionary<string, MacroNode> _macroNodes = [];
     private readonly ConcurrentDictionary<string, string> _parentLookup = [];

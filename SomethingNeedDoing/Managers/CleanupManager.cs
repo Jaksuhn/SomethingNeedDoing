@@ -6,7 +6,8 @@ namespace SomethingNeedDoing.Managers;
 /// <summary>
 /// Manages cleanup functions for macros when they stop execution.
 /// </summary>
-public class CleanupManager : IDisposable
+[RegisterSingleton, AutoConstruct]
+public partial class CleanupManager : IDisposable
 {
     private readonly Dictionary<string, List<string>> _cleanupFunctionsByMacroId = [];
     private readonly Dictionary<string, IMacro> _macrosById = [];
