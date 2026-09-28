@@ -41,6 +41,12 @@ public class Henchman : IPC
         description: "Toggle rendering",
         parameterDescriptions: ["enabled"])]
     public readonly Action<bool> SetRender = null!;
+
+    [EzIPC]
+    [LuaFunction(
+        description: "Toggle unfocused window rendering",
+        parameterDescriptions: ["enabled"])]
+    public readonly Action<bool> UnfocusedRender = null!;
     [EzIPC]
     [LuaFunction(
         description: "Force rendering",
