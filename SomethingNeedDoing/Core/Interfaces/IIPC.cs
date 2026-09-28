@@ -32,6 +32,7 @@ public abstract class IPC : IIPC
         public const string Veyn = $"{Dynamis}veyn";
         public const string Croizat = $"{Dynamis}croizat";
         public const string Vera = $"{Dynamis}vera";
+        public const string Knightmore = $"{Dynamis}knightmore";
 
         private const string Dynamis = "https://puni.sh/api/repository/";
     }
