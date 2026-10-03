@@ -221,7 +221,7 @@ public static unsafe class Game
                     Progress = (int)addon.Reader.Progress,
                     Quality = (int)addon.Reader.Quality,
                     Durability = (int)addon.Reader.Durability,
-                    RemainingCP = (int)Player.Object.CurrentCp,
+                    RemainingCP = (int)(Player.Object?.CurrentCp ?? 0),
                     Condition = addon.Reader.Condition,
                     IQStacks = Player.Status.FirstOrDefault(s => s.StatusId == (uint)Buffs.InnerQuiet)?.Param ?? 0,
                     WasteNotLeft = Player.Status.FirstOrDefault(s => s.StatusId == (uint)Buffs.WasteNot)?.Param ?? 0,

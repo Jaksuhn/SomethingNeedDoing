@@ -44,8 +44,8 @@ public class ChangelogWindow : Window
                             })
                     };
                 })
-                .Where(cg => cg != null)
-                .ToList()!;
+                .OfType<ChangelogClassGroup>()
+                .ToList();
             _versionedGroups[versionGroup.Key] = classGroups;
         }
         _sortedVersions = [.. _versionedGroups.Keys.OrderByDescending(v => v, new VersionComparer())];
@@ -178,7 +178,7 @@ public class ChangelogWindow : Window
     {
         var returnType = memberEntry.ReturnType;
         var returnTypeName = returnType?.Name;
-        var hasReturnTypeData = returnType != null && classGroupDict.ContainsKey(returnTypeName) && classGroupDict[returnTypeName].Members.Count > 0 && !visited.Contains(returnTypeName);
+        var hasReturnTypeData = returnTypeName != null && classGroupDict.ContainsKey(returnTypeName) && classGroupDict[returnTypeName].Members.Count > 0 && !visited.Contains(returnTypeName);
         var label = memberEntry.Name + (returnType != null ? $" → {LuaTypeConverter.GetLuaType(returnType).TypeName}" : "");
 
         // I can't wait for something to legitimately be named general and mess this up

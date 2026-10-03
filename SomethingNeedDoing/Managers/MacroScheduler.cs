@@ -906,7 +906,7 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
             {
                 _combatStart = DateTime.Now.Ticks;
                 var startTimestamp = _combatStart;
-                var opponents = Svc.Objects.Where(o => o.TargetObjectId == Player.Object.GameObjectId).Select(o => new EntityWrapper(o));
+                var opponents = Svc.Objects.Where(o => o.TargetObjectId == Player.Object?.GameObjectId).Select(o => new EntityWrapper(o));
                 _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnCombatStart, new { startTimestamp, opponents });
                 FrameworkLogger.Verbose($"Combat started against {string.Join(", ", opponents.Select(o => o.Name))} at {startTimestamp}");
             }
