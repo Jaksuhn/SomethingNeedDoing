@@ -23,5 +23,5 @@ public class JobWrapper(uint classJobId) : IWrapper
     [LuaDocs] public bool IsDiscipleOfMagic => IsMagicDPS || IsHealer;
     [LuaDocs] public bool IsBlu => Id is 36;
     [LuaDocs] public bool IsLimited => IsBlu;
-    [LuaDocs(description: "Unsynced level (only for LocalPlayer)")] public int Level => Player.GetUnsyncedLevel((Job)Id);
+    [LuaDocs(description: "Unsynced level (only for LocalPlayer)")] public int Level => Player.GetLevel((Job)Id);
 }

@@ -18,11 +18,12 @@ public unsafe class EntityWrapper : IWrapper
     private readonly GameObject* _obj;
     private IGameObject? DalamudObj => Svc.Objects.CreateObjectReference((nint)_obj);
     private Character* Character => IsCharacter ? (Character*)_obj : null;
-    private BattleChara* BattleChara => Type == ObjectKind.BattleNpc ? (BattleChara*)_obj : null;
+    private BattleChara* BattleChara => IsBattleChara ? (BattleChara*)_obj : null;
     private bool IsPlayer => IsCharacter && Type == ObjectKind.Pc;
     private bool IsCharacter => _obj != null && _obj->IsCharacter();
+    private bool IsBattleChara => Type is ObjectKind.BattleNpc or ObjectKind.Pc;
     private T GetCharacterValue<T>(Func<T> getter) => IsCharacter ? getter() : default!;
-    private T GetBattleCharaValue<T>(Func<T> getter) => Type == ObjectKind.BattleNpc ? getter() : default!;
+    private T GetBattleCharaValue<T>(Func<T> getter) => IsBattleChara ? getter() : default!;
 
     [LuaDocs] public ObjectKind Type => _obj->ObjectKind;
     [LuaDocs] public string Name => _obj->NameString;
