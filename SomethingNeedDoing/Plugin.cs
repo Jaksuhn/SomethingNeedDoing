@@ -4,6 +4,8 @@ using Dalamud.Plugin;
 using ECommons;
 using ECommons.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using SomethingNeedDoing.Core.Interfaces;
 
 namespace SomethingNeedDoing;
 
@@ -46,6 +48,7 @@ public partial class Plugin : IAsyncDalamudPlugin
     {
         try
         {
+            await _host.Services.GetRequiredService<IMacroScheduler>().ShutdownAsync().ConfigureAwait(false);
             await _host.StopAsync().ConfigureAwait(false);
         }
         finally

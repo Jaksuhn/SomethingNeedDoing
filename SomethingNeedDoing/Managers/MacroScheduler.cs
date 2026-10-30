@@ -37,6 +37,11 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
     private readonly ConcurrentDictionary<string, List<string>> _cachedFunctionNames = []; // avoid duplicate regex matching in rapid succession (OnUpdate, etc)
     private readonly ConcurrentDictionary<string, DateTime> _lastStartAttempt = []; // throttle rapid start attempts
     private readonly ConcurrentDictionary<string, Task> _startingMacros = []; // track macros currently starting to prevent concurrent starts
+    private readonly object _shutdownGate = new();
+    private readonly Dictionary<string, MacroExecutionState> _activeRuns = [];
+    private readonly HashSet<Task> _controlTasks = [];
+    private Task? _shutdownTask;
+    private volatile bool _isShuttingDown;
     private readonly ConcurrentDictionary<string, (bool isValid, DateTime timestamp)> _cachedValidationResults = []; // cache plugin/config validation
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _triggerRefreshDebounceCts = [];
 
@@ -261,6 +266,13 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
     /// <inheritdoc/>
     public async Task StartMacro(IMacro macro, int loopCount, TriggerEventArgs? triggerArgs = null)
     {
+        if (_isShuttingDown)
+        {
+            if (macro is TemporaryMacro temporaryMacro)
+                temporaryMacro.State = MacroState.Completed;
+            return;
+        }
+
         // skip if already running
         if (_macroStates.ContainsKey(macro.Id))
         {
@@ -323,16 +335,41 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
             return;
         }
 
-        macro.StateChanged += OnMacroStateChanged;
-        macro.ContentChanged += OnMacroContentChanged;
         var state = new MacroExecutionState(macro);
-        RegisterFunctionTriggers(macro);
+        lock (_shutdownGate)
+        {
+            if (_isShuttingDown || _activeRuns.ContainsKey(macro.Id))
+            {
+                state.Dispose();
+                if (_isShuttingDown && macro is TemporaryMacro temporaryMacro)
+                    temporaryMacro.State = MacroState.Completed;
+                return;
+            }
+
+            _activeRuns.Add(macro.Id, state);
+            try
+            {
+                macro.StateChanged += OnMacroStateChanged;
+                macro.ContentChanged += OnMacroContentChanged;
+                RegisterFunctionTriggers(macro);
+            }
+            catch
+            {
+                _activeRuns.Remove(macro.Id);
+                macro.StateChanged -= OnMacroStateChanged;
+                macro.ContentChanged -= OnMacroContentChanged;
+                state.Dispose();
+                throw;
+            }
+        }
 
         // Track the starting task to prevent concurrent starts
         var startTask = Task.Run(async () =>
         {
             try
             {
+                if (state.CancellationSource.IsCancellationRequested) return;
+
                 IMacroEngine engine = state.Macro.Type switch
                 {
                     MacroType.Native => _nativeEngine,
@@ -344,16 +381,17 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
                 _macroStates[macro.Id] = state;
 
                 // Defer dependency checking to avoid blocking main thread when rapidly executing a macro
-                _ = Task.Run(async () =>
+                var dependencyTask = Task.Run(async () =>
                 {
                     try
                     {
                         var (areAvailable, missingDependencies) = await AreDependenciesAvailableAsync(macro);
+                        if (state.CancellationSource.IsCancellationRequested) return;
                         if (!areAvailable)
                         {
                             FrameworkLogger.Error($"Cannot run {macro.Name}. The following dependencies are not available: {string.Join(", ", missingDependencies)}");
                             Svc.Chat.PrintErrorMsg($"Cannot run {macro.Name}. The following dependencies are not available: {string.Join(", ", missingDependencies)}");
-                            StopMacro(macro.Id);
+                            await StopMacroAsync(macro.Id);
                             return;
                         }
 
@@ -362,30 +400,45 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
                     catch (Exception ex)
                     {
                         FrameworkLogger.Error(ex, $"Error in deferred operations for macro {macro.Name}");
-                        StopMacro(macro.Id);
+                        if (!state.CancellationSource.IsCancellationRequested)
+                            await StopMacroAsync(macro.Id);
                     }
                 });
 
-                await Svc.Framework.RunOnTick(async () =>
+                try
                 {
-                    try
+                    await Svc.Framework.RunOnTick(async () =>
                     {
-                        FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Running");
-                        state.Macro.State = MacroState.Running;
+                        try
+                        {
+                            state.CancellationSource.Token.ThrowIfCancellationRequested();
+                            FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Running");
+                            state.Macro.State = MacroState.Running;
 
-                        if (C.AutoOpenStatusWindow && _hierarchyManager.GetParentMacro(macro.Id) == null)
-                            if (_windowSystem.GetWindow<StatusWindow>() is { IsOpen: false } statusWindow)
-                                statusWindow.IsOpen = true;
+                            if (C.AutoOpenStatusWindow && _hierarchyManager.GetParentMacro(macro.Id) == null)
+                                if (_windowSystem.GetWindow<StatusWindow>() is { IsOpen: false } statusWindow)
+                                    statusWindow.IsOpen = true;
 
-                        await engine.StartMacro(macro, state, state.CancellationSource.Token, triggerArgs, loopCount);
-                    }
-                    catch (Exception ex)
-                    {
-                        FrameworkLogger.Error(ex, $"Error executing macro {macro.Name}");
-                        state.Macro.State = MacroState.Error;
-                        await SetPluginStates(macro, true);
-                    }
-                });
+                            await engine.StartMacro(macro, state, state.CancellationSource.Token, triggerArgs, loopCount);
+                        }
+                        catch (OperationCanceledException) when (state.CancellationSource.IsCancellationRequested)
+                        {
+                        }
+                        catch (Exception ex)
+                        {
+                            FrameworkLogger.Error(ex, $"Error executing macro {macro.Name}");
+                            state.Macro.State = MacroState.Error;
+                            await SetPluginStates(macro, true);
+                        }
+                    }, cancellationToken: state.CancellationSource.Token);
+                }
+                finally
+                {
+                    await dependencyTask;
+                }
+            }
+            catch (OperationCanceledException) when (state.CancellationSource.IsCancellationRequested)
+            {
             }
             catch (Exception ex)
             {
@@ -398,29 +451,49 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
         // Store the starting task and clear it when done
         _startingMacros[macro.Id] = startTask;
         state.ExecutionTask = startTask;
-
         try
         {
             await startTask;
+            FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Completed");
+            state.Macro.State = MacroState.Completed;
+            await SetPluginStates(macro, true);
         }
         finally
         {
-            _startingMacros.TryRemove(macro.Id, out _);
+            try
+            {
+                _startingMacros.TryRemove(macro.Id, out _);
+                UnregisterFunctionTriggers(macro);
+                macro.StateChanged -= OnMacroStateChanged;
+                macro.ContentChanged -= OnMacroContentChanged;
+            }
+            finally
+            {
+                try
+                {
+                    state.Dispose();
+                }
+                finally
+                {
+                    lock (_shutdownGate)
+                        _activeRuns.Remove(macro.Id);
+                    state.Completion.TrySetResult();
+                }
+            }
         }
-
-        FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Completed");
-        state.Macro.State = MacroState.Completed;
-        await SetPluginStates(macro, true);
     }
 
     /// <inheritdoc/>
-    public async void PauseMacro(string macroId)
+    public void PauseMacro(string macroId) => RunControl(() => PauseMacroAsync(macroId));
+
+    private async Task PauseMacroAsync(string macroId)
     {
         if (_macroStates.TryGetValue(macroId, out var state))
         {
             state.PauseEvent.Reset();
             state.Macro.State = MacroState.Paused;
             await SetPluginStates(state.Macro, true);
+            if (_isShuttingDown) return;
 
             if (C.PropagateControlsToChildren)
             {
@@ -437,13 +510,16 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
     }
 
     /// <inheritdoc/>
-    public async void ResumeMacro(string macroId)
+    public void ResumeMacro(string macroId) => RunControl(() => ResumeMacroAsync(macroId));
+
+    private async Task ResumeMacroAsync(string macroId)
     {
         if (_macroStates.TryGetValue(macroId, out var state))
         {
             state.PauseEvent.Set();
             state.Macro.State = MacroState.Running;
             await SetPluginStates(state.Macro, false);
+            if (_isShuttingDown) return;
 
             if (C.PropagateControlsToChildren)
             {
@@ -460,20 +536,42 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
     }
 
     /// <inheritdoc/>
-    public async void StopMacro(string macroId)
+    public void StopMacro(string macroId) => RunControl(() => StopMacroAsync(macroId));
+
+    private void RunControl(Func<Task> operation)
+    {
+        Task task;
+        lock (_shutdownGate)
+        {
+            if (_isShuttingDown) return;
+            task = operation();
+            _controlTasks.Add(task);
+        }
+
+        _ = task.ContinueWith(completed =>
+        {
+            lock (_shutdownGate)
+                _controlTasks.Remove(completed);
+            if (completed.Exception is { } exception)
+                FrameworkLogger.Error(exception, "Error controlling macro");
+        }, TaskScheduler.Default);
+    }
+
+    private async Task StopMacroAsync(string macroId)
     {
         if (_macroStates.TryGetValue(macroId, out var state))
         {
-            state.CancellationSource.Cancel();
+            state.RequestCancellation();
             state.Macro.State = MacroState.Completed;
 
             // rest of the cleanup will be handled by OnMacroStateChanged
             UnregisterFunctionTriggers(state.Macro);
             await SetPluginStates(state.Macro, true);
+            if (_isShuttingDown) return;
 
             if (C.PropagateControlsToChildren)
                 foreach (var child in _hierarchyManager.GetChildMacros(macroId).ToList())
-                    StopMacro(child.Id);
+                    await StopMacroAsync(child.Id);
         }
     }
 
@@ -486,8 +584,7 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
         if (_macroStates.Remove(macroId, out var state))
         {
             UnregisterFunctionTriggers(state.Macro);
-            state.CancellationSource.Cancel();
-            state.CancellationSource.Dispose();
+            state.RequestCancellation();
             state.Macro.StateChanged -= OnMacroStateChanged;
             state.Macro.ContentChanged -= OnMacroContentChanged;
         }
@@ -574,7 +671,7 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
         if (_macroStates.TryGetValue(macroId, out var state) && state.StopAtLoop)
         {
             state.StopAtLoop = false;
-            state.CancellationSource.Cancel();
+            state.RequestCancellation();
             state.Macro.State = MacroState.Completed;
         }
     }
@@ -680,17 +777,42 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
 
     private class MacroExecutionState(IMacro macro) : IMacroInstance
     {
+        private readonly object _disposalGate = new();
+        private bool _disposed;
         public IMacro Macro { get; } = macro;
         public bool PauseAtLoop { get; set; }
         public bool StopAtLoop { get; set; }
         public CancellationTokenSource CancellationSource { get; } = new CancellationTokenSource();
         public ManualResetEventSlim PauseEvent { get; } = new ManualResetEventSlim(true);
+        public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task? ExecutionTask { get; set; }
+
+        public void RequestCancellation()
+        {
+            lock (_disposalGate)
+            {
+                if (_disposed) return;
+                try
+                {
+                    CancellationSource.Cancel();
+                }
+                catch (AggregateException ex)
+                {
+                    FrameworkLogger.Error(ex, $"Error cancelling macro {Macro.Id}");
+                }
+                PauseEvent.Set();
+            }
+        }
 
         public void Dispose()
         {
-            CancellationSource.Dispose();
-            PauseEvent.Dispose();
+            lock (_disposalGate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                CancellationSource.Dispose();
+                PauseEvent.Dispose();
+            }
         }
     }
 
@@ -729,8 +851,7 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
             if (_macroStates.Remove(e.MacroId, out var state))
             {
                 UnregisterFunctionTriggers(state.Macro);
-                state.CancellationSource.Cancel();
-                state.CancellationSource.Dispose();
+                state.RequestCancellation();
                 state.Macro.StateChanged -= OnMacroStateChanged;
                 state.Macro.ContentChanged -= OnMacroContentChanged;
             }
@@ -1115,7 +1236,7 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
             else if (e.ControlType == LoopControlType.Stop && state.StopAtLoop)
             {
                 state.StopAtLoop = false;
-                state.CancellationSource.Cancel();
+                state.RequestCancellation();
                 state.Macro.State = MacroState.Completed;
             }
         }
@@ -1123,6 +1244,13 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
 
     private void OnMacroExecutionRequested(object? sender, MacroExecutionRequestedEventArgs e)
     {
+        if (_isShuttingDown)
+        {
+            if (e.Macro is TemporaryMacro temporaryMacro)
+                temporaryMacro.State = MacroState.Completed;
+            return;
+        }
+
         FrameworkLogger.Verbose($"Received macro execution request for {e.Macro.Name}");
 
         if (_macroStates.ContainsKey(e.Macro.Id))
@@ -1141,9 +1269,30 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
     }
     #endregion
 
+    public Task ShutdownAsync()
+    {
+        MacroExecutionState[] runs;
+        Task shutdownTask;
+        lock (_shutdownGate)
+        {
+            if (_shutdownTask != null) return _shutdownTask;
+            _luaEngine.BeginShutdown();
+            _isShuttingDown = true;
+            runs = [.. _activeRuns.Values];
+            shutdownTask = Task.WhenAll(runs.Select(run => run.Completion.Task)
+                .Concat(_controlTasks.Select(task => task.ContinueWith(_ => { }, TaskScheduler.Default))));
+            _shutdownTask = shutdownTask;
+        }
+
+        foreach (var run in runs)
+            run.RequestCancellation();
+        return shutdownTask;
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {
+        _ = ShutdownAsync();
         _nativeEngine.MacroError -= OnEngineError;
         _luaEngine.MacroError -= OnEngineError;
         _triggerEventManager.TriggerEventOccurred -= OnTriggerEventOccurred;

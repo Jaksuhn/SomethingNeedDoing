@@ -40,6 +40,9 @@ public partial class NLuaMacroEngine : IMacroEngine
 
     private readonly ConcurrentDictionary<string, TemporaryMacro> _temporaryMacros = [];
     private readonly ConcurrentDictionary<string, Lua> _activeLuaEnvironments = [];
+    private volatile bool _isShuttingDown;
+
+    internal void BeginShutdown() => _isShuttingDown = true;
 
     /// <inheritdoc/>
     public IMacro? GetTemporaryMacro(string macroId) => _temporaryMacros.TryGetValue(macroId, out var macro) ? macro : null;
@@ -125,6 +128,7 @@ public partial class NLuaMacroEngine : IMacroEngine
                 try
                 {
                     // Execute the script
+                    token.ThrowIfCancellationRequested();
                     var results = lua.LoadEntryPointWrappedScript(macro.Macro.ContentSansMetadata());
                     if (results.Length == 0 || results[0] is not LuaFunction func)
                         throw new LuaException("Failed to load Lua script: No function returned");
@@ -145,7 +149,9 @@ public partial class NLuaMacroEngine : IMacroEngine
                             {
                                 var result = macro.LuaGenerator.Call();
                                 return (result.Length == 0, result);
-                            });
+                            }, cancellationToken: token);
+
+                            token.ThrowIfCancellationRequested();
 
                             if (macroComplete)
                                 break;
@@ -168,7 +174,7 @@ public partial class NLuaMacroEngine : IMacroEngine
 
                             MacroStepCompleted?.Invoke(this, new MacroStepCompletedEventArgs(macro.Macro.Id, 1, 1));
 
-                            await Svc.Framework.DelayTicks(1);
+                            await Svc.Framework.RunOnTick(() => true, cancellationToken: token);
                         }
                         catch (OperationCanceledException)
                         {
@@ -198,7 +204,8 @@ public partial class NLuaMacroEngine : IMacroEngine
                 }
                 finally
                 {
-                    await ExecuteCleanupFunctions(lua, macro.Macro);
+                    if (!_isShuttingDown)
+                        await ExecuteCleanupFunctions(lua, macro.Macro);
                 }
             }, cancellationToken: token).ConfigureAwait(false);
         }
@@ -277,13 +284,14 @@ public partial class NLuaMacroEngine : IMacroEngine
     /// <param name="macro">The macro to execute cleanup for.</param>
     private async Task ExecuteCleanupFunctions(Lua lua, IMacro macro)
     {
-        if (macro is TemporaryMacro) return;
+        if (_isShuttingDown || macro is TemporaryMacro) return;
 
         var cleanupFunctions = GetCleanupFunctions(macro.Id);
         if (cleanupFunctions.Count == 0) return;
 
         foreach (var functionName in cleanupFunctions)
         {
+            if (_isShuttingDown) break;
             try
             {
                 var results = lua.LoadEntryPointWrappedScript($@"{functionName}()");
@@ -298,6 +306,7 @@ public partial class NLuaMacroEngine : IMacroEngine
                     // TODO: don't duplicate logic from executemacro?
                     while (true)
                     {
+                        if (_isShuttingDown) break;
                         if (func == null)
                         {
                             FrameworkLogger.Debug($"Cleanup function {functionName} completed (func is null)");

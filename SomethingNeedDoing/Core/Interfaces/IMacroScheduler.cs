@@ -9,6 +9,9 @@ namespace SomethingNeedDoing.Core.Interfaces;
 /// </summary>
 public interface IMacroScheduler
 {
+    /// <summary>Stops accepting macros and waits for active executions to finish.</summary>
+    Task ShutdownAsync();
+
     /// <summary>
     /// Event raised when a macro's state changes.
     /// </summary>
