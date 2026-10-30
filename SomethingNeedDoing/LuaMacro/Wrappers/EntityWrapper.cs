@@ -27,8 +27,10 @@ public unsafe class EntityWrapper : IWrapper
 
     [LuaDocs] public ObjectKind Type => _obj->ObjectKind;
     [LuaDocs] public string Name => _obj->NameString;
+    [LuaDocs][Changelog("15.13")] public uint EntityId => _obj->EntityId;
     [LuaDocs] public Vector3 Position => _obj->Position;
     [LuaDocs] public float DistanceTo => Player.DistanceTo(Position);
+    [LuaDocs][Changelog("15.13")] public float HitboxRadius => _obj->HitboxRadius;
 
     [LuaDocs] public ulong ContentId => GetCharacterValue(() => Character->ContentId);
     [LuaDocs] public ulong AccountId => GetCharacterValue(() => Character->AccountId);
