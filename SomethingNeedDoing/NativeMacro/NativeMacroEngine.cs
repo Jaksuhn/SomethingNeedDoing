@@ -76,7 +76,7 @@ public partial class NativeMacroEngine : IMacroEngine
                     token.ThrowIfCancellationRequested();
 
                     // Wait if paused
-                    instance.PauseEvent.Wait(token);
+                    await MacroPause.WaitAsync(instance.PauseEvent, token);
 
                     // Check for loop pause/stop
                     if (instance.PauseAtLoop)
