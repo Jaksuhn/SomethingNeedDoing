@@ -9,6 +9,7 @@ using Dalamud.Plugin.Services;
 using Dalamud.Utility.Signatures;
 using ECommons;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
+using Microsoft.Extensions.Hosting;
 using NLua;
 using SomethingNeedDoing.Core.Events;
 using SomethingNeedDoing.Core.Interfaces;
@@ -26,8 +27,11 @@ namespace SomethingNeedDoing.Managers;
 /// Manages and coordinates execution of multiple macros.
 /// </summary>
 [RegisterSingleton<IMacroScheduler>, AutoConstruct]
-public partial class MacroScheduler : IMacroScheduler, IDisposable
+[RegisterSingleton<IHostedService>(Duplicate = DuplicateStrategy.Append, Factory = nameof(GetHostedService))]
+public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposable
 {
+    public static IHostedService GetHostedService(IServiceProvider provider) => (MacroScheduler)provider.GetRequiredService<IMacroScheduler>();
+
     private readonly ConcurrentDictionary<string, MacroExecutionState> _macroStates = [];
     private readonly ConcurrentDictionary<string, IMacroEngine> _enginesByMacroId = [];
     private readonly ConcurrentDictionary<string, AutoRetainerApi> _arApis = [];
@@ -39,8 +43,11 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
     private readonly ConcurrentDictionary<string, Task> _startingMacros = []; // track macros currently starting to prevent concurrent starts
     private readonly ConcurrentDictionary<string, (bool isValid, DateTime timestamp)> _cachedValidationResults = []; // cache plugin/config validation
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _triggerRefreshDebounceCts = [];
+    private readonly ConcurrentDictionary<Task, IMacro> _activeRuns = []; // every active StartMacro, awaited on shutdown
+    private volatile bool _isShuttingDown;
 
     private const int TriggerRefreshDebounceMs = 500;
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
 
     private readonly NativeMacroEngine _nativeEngine;
     private readonly NLuaMacroEngine _luaEngine;
@@ -260,6 +267,24 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
 
     /// <inheritdoc/>
     public async Task StartMacro(IMacro macro, int loopCount, TriggerEventArgs? triggerArgs = null)
+    {
+        // during shutdown only temporary macros may start, so cleanup functions of stopping macros can still run their commands
+        if (_isShuttingDown && macro is not TemporaryMacro)
+            return;
+
+        var run = RunMacro(macro, loopCount, triggerArgs);
+        _activeRuns.TryAdd(run, macro);
+        try
+        {
+            await run;
+        }
+        finally
+        {
+            _activeRuns.TryRemove(run, out _);
+        }
+    }
+
+    private async Task RunMacro(IMacro macro, int loopCount, TriggerEventArgs? triggerArgs)
     {
         // skip if already running
         if (_macroStates.ContainsKey(macro.Id))
@@ -1142,8 +1167,46 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
     #endregion
 
     /// <inheritdoc/>
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Cancels all running macros and waits (bounded) for them to finish while plugin services are still alive.
+    /// </summary>
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _isShuttingDown = true;
+        foreach (var state in _macroStates.Values)
+            TryCancel(state);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(ShutdownTimeout);
+        var timeout = Task.Delay(Timeout.Infinite, timeoutCts.Token);
+
+        // loop since cleanup functions can start new temporary macros while we wait
+        while (_activeRuns.Keys.Where(t => !t.IsCompleted).ToArray() is { Length: > 0 } pending)
+        {
+            if (await Task.WhenAny(Task.WhenAll(pending), timeout) == timeout)
+            {
+                var stuck = _activeRuns.Where(r => !r.Key.IsCompleted).Select(r => r.Value.Name).ToList();
+                FrameworkLogger.Warning($"{stuck.Count} macro(s) did not stop within {ShutdownTimeout.TotalSeconds}s of unload: {string.Join(", ", stuck)}");
+                break;
+            }
+        }
+    }
+
+    private static void TryCancel(MacroExecutionState state)
+    {
+        try
+        {
+            state.CancellationSource.Cancel();
+        }
+        catch (ObjectDisposedException) { } // already completed
+    }
+
+    /// <inheritdoc/>
     public void Dispose()
     {
+        _isShuttingDown = true;
         _nativeEngine.MacroError -= OnEngineError;
         _luaEngine.MacroError -= OnEngineError;
         _triggerEventManager.TriggerEventOccurred -= OnTriggerEventOccurred;
@@ -1159,7 +1222,12 @@ public partial class MacroScheduler : IMacroScheduler, IDisposable
         _nativeEngine.LoopControlRequested -= OnLoopControlRequested;
         _luaEngine.LoopControlRequested -= OnLoopControlRequested;
 
-        _macroStates.Values.Each(s => s.Dispose());
+        // anything still running past StopAsync's timeout at least gets told to stop
+        _macroStates.Values.Each(s =>
+        {
+            TryCancel(s);
+            s.Dispose();
+        });
         _macroStates.Clear();
         _enginesByMacroId.Clear();
         _startingMacros.Clear();
