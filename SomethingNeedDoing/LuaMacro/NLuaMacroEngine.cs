@@ -311,21 +311,25 @@ public partial class NLuaMacroEngine : IMacroEngine
                             break;
                         }
 
-                        if (result[0] is string command && MacroExecutionRequested is { })
-                        {
-                            var tempMacro = new TemporaryMacro(macro, command, _macroHierarchy, $"{macro.Id}_cleanup_cmd_{Guid.NewGuid()}")
-                            {
-                                Name = $"{macro.Name} - Cleanup Command",
-                                Type = MacroType.Native
-                            };
-
-                            await tempMacro.Run(MacroExecutionRequested);
-                        }
-                        else
+                        if (result[0] is not string command)
                         {
                             FrameworkLogger.Warning($"Cleanup function {functionName} completed with non-string result");
                             break;
                         }
+
+                        if (MacroExecutionRequested is null)
+                        {
+                            FrameworkLogger.Warning($"Cleanup function {functionName} yielded \"{command}\" but no executor is attached (plugin unloading?), stopping cleanup");
+                            break;
+                        }
+
+                        var tempMacro = new TemporaryMacro(macro, command, _macroHierarchy, $"{macro.Id}_cleanup_cmd_{Guid.NewGuid()}")
+                        {
+                            Name = $"{macro.Name} - Cleanup Command",
+                            Type = MacroType.Native
+                        };
+
+                        await tempMacro.Run(MacroExecutionRequested);
                     }
                 }
                 catch (Exception ex)
