@@ -14,6 +14,25 @@ public class ExcelModule : LuaModuleBase
 
     protected override object? MetaIndex(LuaTable table, object key) => GetSheet(key.ToString() ?? string.Empty);
 
+    public override void Register(Lua lua)
+    {
+        base.Register(lua);
+
+        // for keys that aren't CLR members (row.Name, row["Name"]), NLua scans every loaded assembly for an extension method before trying the indexer, which made row access ~400x slower than row:GetProperty
+        lua["__sndExcelRow"] = new ExcelRowWrapper(new object(), 0);
+        lua.DoString("""
+            local mt = getmetatable(__sndExcelRow)
+            local index = mt.__index
+            local getProperty = index(__sndExcelRow, "GetProperty")
+            local members = { GetProperty = true, ToString = true, GetType = true, Equals = true, GetHashCode = true }
+            mt.__index = function(row, key)
+              if type(key) ~= "string" or members[key] then return index(row, key) end
+              return getProperty(row, key)
+            end
+            __sndExcelRow = nil
+            """);
+    }
+
     [LuaFunction]
     public ExcelSheetWrapper? GetSheet(string sheetName)
     {
