@@ -26,37 +26,6 @@ public class EnginesModule : LuaModuleBase
         RegisterEngineFunctions(lua);
     }
 
-    public void RegisterDocumentation(LuaDocumentation docs)
-    {
-        var moduleDocs = new List<LuaFunctionDoc>
-        {
-            new(
-            ModuleName,
-            "Run",
-            "Executes content using the relevant engine",
-            LuaTypeConverter.GetLuaType(typeof(void)),
-            [("content", LuaTypeConverter.GetLuaType(typeof(string)), "The content to execute", null)],
-            null,
-            true
-        )
-        };
-
-        foreach (var (name, engine) in _engines)
-        {
-            moduleDocs.Add(new LuaFunctionDoc(
-                $"{ModuleName}.{name}",
-                "Run",
-                $"Executes content using the {engine.Name} engine",
-                LuaTypeConverter.GetLuaType(typeof(void)),
-                [("content", LuaTypeConverter.GetLuaType(typeof(string)), "The content to execute", null)],
-                null,
-                true
-            ));
-        }
-
-        docs.RegisterModule(this, moduleDocs);
-    }
-
     /// <summary>
     /// Registers documentation for the Engines module at startup (without requiring actual engine instances).
     /// </summary>

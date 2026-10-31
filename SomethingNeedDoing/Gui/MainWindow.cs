@@ -74,9 +74,7 @@ public class MainWindow : Window
     public override void Draw()
     {
         _createMacroModal.DrawModal();
-        CreateFolderModal.DrawModal();
-        RenameModal.DrawModal();
-        RenameFolderModal.DrawModal();
+        TextInputModal.DrawModal();
         MigrationModal.DrawModal();
         _versionHistoryModal.Draw();
 

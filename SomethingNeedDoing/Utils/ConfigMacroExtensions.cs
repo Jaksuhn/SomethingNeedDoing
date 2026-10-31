@@ -19,7 +19,7 @@ public static class ConfigMacroExtensions
 
     public static void Rename(this ConfigMacro macro, string newName)
     {
-        if (C.IsValidMacroName(newName, string.Empty, macro.Id))
+        if (C.IsValidMacroName(newName, macro.Id))
         {
             macro.Name = newName;
             C.Save();
@@ -45,13 +45,13 @@ public static class ConfigMacroExtensions
     public static void Delete(this ConfigMacro macro) => C.Macros.RemoveAll(m => m.Id == macro.Id);
     public static void Move(this ConfigMacro macro, string folderPath) => macro.FolderPath = folderPath;
     public static void Start(this IMacro macro, IMacroScheduler scheduler, TriggerEventArgs? args = null)
-        => _ = scheduler.StartMacro(macro, args);
+        => _ = scheduler.StartMacro(macro, 0, args);
     public static void Stop(this IMacro macro, IMacroScheduler scheduler)
         => scheduler.StopMacro(macro.Id);
     public static void Pause(this IMacro macro, IMacroScheduler scheduler)
-        => scheduler.PauseMacro(macro.Id);
+        => scheduler.SetPaused(macro.Id, true);
     public static void Resume(this IMacro macro, IMacroScheduler scheduler)
-        => scheduler.ResumeMacro(macro.Id);
+        => scheduler.SetPaused(macro.Id, false);
     public static void UpdateLastModified(this IMacro macro) => macro.Metadata.LastModified = DateTime.Now;
 
     /// <summary>
@@ -105,8 +105,7 @@ public static class ConfigMacroExtensions
                 {
                     try
                     {
-                        var regex = new Regex(cfg.Value.ValidationPattern);
-                        if (!regex.IsMatch(cfg.Value.ToString() ?? string.Empty))
+                        if (!Regex.IsMatch(cfg.Value.ToString() ?? string.Empty, cfg.Value.ValidationPattern))
                             return false;
                     }
                     catch

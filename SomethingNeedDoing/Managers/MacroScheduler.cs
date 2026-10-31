@@ -1,24 +1,14 @@
-using AutoRetainerAPI;
 using Dalamud.Game.Addon.Lifecycle;
-using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
-using Dalamud.Game.Chat;
-using Dalamud.Game.DutyState;
-using Dalamud.Hooking;
 using Dalamud.Interface.Windowing;
-using Dalamud.Plugin.Services;
-using Dalamud.Utility.Signatures;
 using ECommons;
-using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using Microsoft.Extensions.Hosting;
 using NLua;
 using SomethingNeedDoing.Core.Events;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.Gui;
 using SomethingNeedDoing.LuaMacro;
-using SomethingNeedDoing.LuaMacro.Wrappers;
 using SomethingNeedDoing.NativeMacro;
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,71 +23,50 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
     public static IHostedService GetHostedService(IServiceProvider provider) => (MacroScheduler)provider.GetRequiredService<IMacroScheduler>();
 
     private readonly ConcurrentDictionary<string, MacroExecutionState> _macroStates = [];
-    private readonly ConcurrentDictionary<string, IMacroEngine> _enginesByMacroId = [];
-    private readonly ConcurrentDictionary<string, AutoRetainerApi> _arApis = [];
     private readonly ConcurrentDictionary<string, AddonEventConfig> _addonEvents = [];
-    private readonly ConcurrentDictionary<(AddonEvent EventType, string AddonName), (int RefCount, IAddonLifecycle.AddonEventDelegate Handler)> _addonListenerHandlers = [];
-    private readonly ConcurrentDictionary<string, IDisableable> _disableablePlugins = [];
-    private readonly ConcurrentDictionary<string, List<string>> _cachedFunctionNames = []; // avoid duplicate regex matching in rapid succession (OnUpdate, etc)
-    private readonly ConcurrentDictionary<string, DateTime> _lastStartAttempt = []; // throttle rapid start attempts
-    private readonly ConcurrentDictionary<string, Task> _startingMacros = []; // track macros currently starting to prevent concurrent starts
-    private readonly ConcurrentDictionary<string, (bool isValid, DateTime timestamp)> _cachedValidationResults = []; // cache plugin/config validation
+    private readonly ConcurrentDictionary<string, IReadOnlyList<FunctionInfo>> _registeredFunctions = []; // function triggers registered per running macro
+    private readonly ConcurrentDictionary<string, long> _startBlockedUntil = []; // macros that recently failed validation
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _triggerRefreshDebounceCts = [];
     private readonly ConcurrentDictionary<Task, IMacro> _activeRuns = []; // every active StartMacro, awaited on shutdown
+    private readonly ConcurrentDictionary<string, IDisableable> _disableablePlugins = [];
     private volatile bool _isShuttingDown;
 
+    private const int FailedValidationBlockMs = 5000;
     private const int TriggerRefreshDebounceMs = 500;
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
 
     private readonly NativeMacroEngine _nativeEngine;
     private readonly NLuaMacroEngine _luaEngine;
     private readonly TriggerEventManager _triggerEventManager;
+    private readonly TriggerEventSources _eventSources;
     private readonly MacroHierarchyManager _hierarchyManager;
     private readonly WindowSystem _windowSystem;
     private readonly MetadataParser _metadataParser;
     private readonly IEnumerable<IDisableable> _disableablePluginSources;
 
-    private readonly HashSet<string> _functionTriggersRegistered = [];
-    private readonly ConcurrentDictionary<string, List<(AddonEvent EventType, string AddonName)>> _functionLevelAddonListeners = [];
-
     /// <inheritdoc/>
     public event EventHandler<MacroStateChangedEventArgs>? MacroStateChanged;
-
-    /// <summary>
-    /// Event raised when any macro encounters an error.
-    /// </summary>
-    public event EventHandler<MacroErrorEventArgs>? MacroError;
-
-    private unsafe delegate long OnEmoteFuncDelegate(IntPtr a1, GameObject* source, ushort emoteId, GameObjectId targetId, long a5);
-    [Signature("48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 56 48 83 EC 30 4C 8B 74 24 ?? 48 8B D9", DetourName = nameof(OnEmoteFuncDetour))]
-    private readonly Hook<OnEmoteFuncDelegate> OnEmoteFuncHook = null!;
 
     [AutoPostConstruct]
     private void Initialize()
     {
-        Svc.Hook.InitializeFromAttributes(this);
-        OnEmoteFuncHook?.Enable();
-
-        _nativeEngine.MacroError += OnEngineError;
-        _luaEngine.MacroError += OnEngineError;
         _triggerEventManager.TriggerEventOccurred += OnTriggerEventOccurred;
         _triggerEventManager.FunctionExecutionRequested += OnFunctionExecutionRequested;
-
-        _nativeEngine.MacroControlRequested += OnMacroControlRequested;
-        _luaEngine.MacroControlRequested += OnMacroControlRequested;
-        _nativeEngine.MacroStepCompleted += OnMacroStepCompleted;
-        _luaEngine.MacroStepCompleted += OnMacroStepCompleted;
-
         _nativeEngine.MacroExecutionRequested += OnMacroExecutionRequested;
         _luaEngine.MacroExecutionRequested += OnMacroExecutionRequested;
-
         _nativeEngine.LoopControlRequested += OnLoopControlRequested;
-        _luaEngine.LoopControlRequested += OnLoopControlRequested;
 
         foreach (var plugin in _disableablePluginSources)
             _disableablePlugins[plugin.InternalName] = plugin;
 
-        SubscribeToTriggerEvents();
+        foreach (var macro in C.Macros)
+        {
+            // Parse metadata from content to ensure filters and triggers are loaded
+            macro.Metadata = _metadataParser.ParseMetadata(macro.Content, macro.Metadata);
+            foreach (var triggerEvent in macro.Metadata.TriggerEvents)
+                SubscribeToTriggerEvent(macro, triggerEvent);
+            macro.ContentChanged += OnMacroContentChanged;
+        }
     }
 
     /// <inheritdoc/>
@@ -106,6 +75,7 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
     /// <inheritdoc/>
     public MacroState GetMacroState(string macroId) => _macroStates.TryGetValue(macroId, out var state) ? state.Macro.State : MacroState.Unknown;
 
+    #region Macro-level triggers
     /// <inheritdoc/>
     public void SubscribeToTriggerEvent(IMacro macro, TriggerEvent triggerEvent)
     {
@@ -114,29 +84,15 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
         switch (triggerEvent)
         {
             case TriggerEvent.OnAutoRetainerCharacterPostProcess:
-                if (!_arApis.ContainsKey(macro.Id))
-                {
-                    _arApis.TryAdd(macro.Id, new AutoRetainerApi());
-                    _arApis[macro.Id].OnCharacterPostprocessStep += () => CheckCharacterPostProcess(macro);
-                    _arApis[macro.Id].OnCharacterReadyToPostProcess += () => DoCharacterPostProcess(macro);
-                }
-                _triggerEventManager.RegisterTrigger(macro, triggerEvent);
+                _eventSources.AttachAutoRetainer(macro);
                 break;
             case TriggerEvent.OnAddonEvent:
-                if (macro.Metadata.AddonEventConfig is { } cfg)
-                {
-                    if (!_addonEvents.ContainsKey(macro.Id))
-                    {
-                        _addonEvents.TryAdd(macro.Id, cfg);
-                        EnsureAddonListenerRegistered(cfg.EventType, cfg.AddonName);
-                    }
-                }
-                break;
-            default:
-                // For all other events, we just need to register with the trigger event manager
-                _triggerEventManager.RegisterTrigger(macro, triggerEvent);
+                if (macro.Metadata.AddonEventConfig is not { } cfg || !_addonEvents.TryAdd(macro.Id, cfg))
+                    return;
+                _eventSources.AcquireAddonListener(cfg.EventType, cfg.AddonName);
                 break;
         }
+        _triggerEventManager.RegisterTrigger(macro, triggerEvent);
     }
 
     /// <inheritdoc/>
@@ -147,126 +103,85 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
         switch (triggerEvent)
         {
             case TriggerEvent.OnAutoRetainerCharacterPostProcess:
-                if (_arApis.TryGetValue(macro.Id, out var arApi))
-                {
-                    arApi.OnCharacterPostprocessStep -= () => CheckCharacterPostProcess(macro);
-                    arApi.OnCharacterReadyToPostProcess -= () => DoCharacterPostProcess(macro);
-                    arApi.Dispose();
-                    _arApis.Remove(macro.Id, out _);
-                }
-                _triggerEventManager.UnregisterTrigger(macro, triggerEvent);
+                _eventSources.DetachAutoRetainer(macro.Id);
                 break;
             case TriggerEvent.OnAddonEvent:
-                if (_addonEvents.TryGetValue(macro.Id, out var cfg))
-                {
-                    UnensureAddonListenerRegistered(cfg.EventType, cfg.AddonName);
-                    _addonEvents.Remove(macro.Id, out _);
-                }
-                break;
-            default:
-                // For all other events, we just need to unregister from the trigger event manager
-                _triggerEventManager.UnregisterTrigger(macro, triggerEvent);
+                if (_addonEvents.TryRemove(macro.Id, out var cfg))
+                    _eventSources.ReleaseAddonListener(cfg.EventType, cfg.AddonName);
                 break;
         }
+        _triggerEventManager.UnregisterTrigger(macro, triggerEvent);
     }
 
-    #region Controls
-    public async Task StartMacro(IMacro macro) => await StartMacro(macro, null);
-
-    /// <summary>
-    /// Parses and caches function names from macro content to avoid regex on every start/stop.
-    /// </summary>
-    /// <param name="macro">The macro to parse function names for.</param>
-    /// <returns>List of function names found in the macro.</returns>
-    private List<string> ParseFunctionNames(IMacro macro)
+    /// <inheritdoc/>
+    public void RefreshTriggersFromContent(ConfigMacro macro, bool refreshFunctionTriggersIfRunning = true)
     {
-        if (_cachedFunctionNames.TryGetValue(macro.Id, out var cachedNames))
-            return cachedNames;
+        ArgumentNullException.ThrowIfNull(macro);
 
-        var functionNames = new List<string>();
+        foreach (var triggerEvent in macro.Metadata.TriggerEvents.ToList())
+            UnsubscribeFromTriggerEvent(macro, triggerEvent);
 
-        if (macro.Type == MacroType.Lua)
+        _metadataParser.ParseMetadata(macro.Content, macro.Metadata);
+
+        foreach (var triggerEvent in macro.Metadata.TriggerEvents)
+            SubscribeToTriggerEvent(macro, triggerEvent);
+
+        if (refreshFunctionTriggersIfRunning && _macroStates.TryGetValue(macro.Id, out var state))
         {
-            // match "function OnEventName()"
-            var matches = Regex.Matches(macro.Content, @"function\s+(\w+)\s*\(");
-            foreach (Match match in matches)
-            {
-                var functionName = match.Groups[1].Value;
-                functionNames.Add(functionName);
-            }
+            UnregisterFunctionTriggers(state.Macro);
+            RegisterFunctionTriggers(state.Macro);
         }
-        else
-        {
-            // match "/OnEventName"
-            var matches = Regex.Matches(macro.Content, @"^/\s*(\w+)", RegexOptions.Multiline);
-            foreach (Match match in matches)
-            {
-                var functionName = match.Groups[1].Value;
-                functionNames.Add(functionName);
-            }
-        }
-
-        _cachedFunctionNames[macro.Id] = functionNames;
-        return functionNames;
     }
 
-    /// <summary>
-    /// Registers function-level triggers for a macro using cached function names.
-    /// </summary>
-    /// <param name="macro">The macro to register function triggers for.</param>
+    /// <inheritdoc/>
+    public void UnregisterDeletedMacro(IMacro macro)
+    {
+        ArgumentNullException.ThrowIfNull(macro);
+        StopMacro(macro.Id);
+
+        foreach (var triggerEvent in macro.Metadata.TriggerEvents.ToList())
+            UnsubscribeFromTriggerEvent(macro, triggerEvent);
+
+        _triggerEventManager.UnregisterAllTriggers(macro);
+        UnregisterFunctionTriggers(macro);
+
+        macro.ContentChanged -= OnMacroContentChanged;
+        CancelTriggerRefresh(macro.Id);
+        RemoveState(macro.Id);
+        FrameworkLogger.Debug($"Unregistered triggers and cleaned up deleted macro {macro.Name} ({macro.Id})");
+    }
+    #endregion
+
+    #region Function-level triggers
     private void RegisterFunctionTriggers(IMacro macro)
     {
         if (macro is TemporaryMacro) return;
-        if (_functionTriggersRegistered.Contains(macro.Id)) return;
 
-        var functionNames = ParseFunctionNames(macro);
-        var addonListenersToUnregister = new List<(AddonEvent EventType, string AddonName)>();
-        foreach (var functionName in functionNames)
+        var functions = MacroFunctions.TriggerFunctions(macro.Content, macro.Type).ToList();
+        if (!_registeredFunctions.TryAdd(macro.Id, functions)) return;
+
+        foreach (var function in functions)
         {
-            _triggerEventManager.RegisterFunctionTrigger(macro, functionName);
-            if (functionName.StartsWith("OnAddonEvent_", StringComparison.OrdinalIgnoreCase))
-            {
-                var parts = functionName.Split('_');
-                if (parts.Length >= 3 && Enum.TryParse<AddonEvent>(parts[2], true, out var addonEventType))
-                {
-                    EnsureAddonListenerRegistered(addonEventType, parts[1]);
-                    addonListenersToUnregister.Add((addonEventType, parts[1]));
-                }
-            }
+            _triggerEventManager.RegisterFunctionTrigger(macro, function);
+            if (function is { AddonName: { } addonName, AddonEvent: { } addonEvent })
+                _eventSources.AcquireAddonListener(addonEvent, addonName);
         }
-        if (addonListenersToUnregister.Count > 0)
-            _functionLevelAddonListeners[macro.Id] = addonListenersToUnregister;
-        _functionTriggersRegistered.Add(macro.Id);
     }
 
-    /// <summary>
-    /// Unregisters function-level triggers for a macro using cached function names.
-    /// </summary>
-    /// <param name="macro">The macro to unregister function triggers for.</param>
     private void UnregisterFunctionTriggers(IMacro macro)
     {
-        if (macro is TemporaryMacro) return;
-        if (!_functionTriggersRegistered.Contains(macro.Id)) return;
+        if (!_registeredFunctions.TryRemove(macro.Id, out var functions)) return;
 
-        if (_functionLevelAddonListeners.TryRemove(macro.Id, out var addonListeners))
-        {
-            foreach (var (eventType, addonName) in addonListeners)
-                UnensureAddonListenerRegistered(eventType, addonName);
-        }
-        var functionNames = ParseFunctionNames(macro);
-        foreach (var functionName in functionNames)
-            _triggerEventManager.UnregisterFunctionTrigger(macro, functionName);
-        _functionTriggersRegistered.Remove(macro.Id);
+        foreach (var function in functions)
+            if (function is { AddonName: { } addonName, AddonEvent: { } addonEvent })
+                _eventSources.ReleaseAddonListener(addonEvent, addonName);
+        _triggerEventManager.UnregisterFunctionTriggers(macro);
     }
+    #endregion
 
+    #region Controls
     /// <inheritdoc/>
-    public Task StartMacro(IMacro macro, int loopCount) => StartMacro(macro, loopCount, null);
-
-    /// <inheritdoc/>
-    public Task StartMacro(IMacro macro, TriggerEventArgs? triggerArgs = null) => StartMacro(macro, 0, triggerArgs);
-
-    /// <inheritdoc/>
-    public async Task StartMacro(IMacro macro, int loopCount, TriggerEventArgs? triggerArgs = null)
+    public async Task StartMacro(IMacro macro, int loopCount = 0, TriggerEventArgs? triggerArgs = null)
     {
         // during shutdown only temporary macros may start, so cleanup functions of stopping macros can still run their commands
         if (_isShuttingDown && macro is not TemporaryMacro)
@@ -286,202 +201,112 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
 
     private async Task RunMacro(IMacro macro, int loopCount, TriggerEventArgs? triggerArgs)
     {
-        // skip if already running
         if (_macroStates.ContainsKey(macro.Id))
         {
             FrameworkLogger.Verbose($"Macro {macro.Name} is already running, skipping start.");
             return;
         }
 
-        // Throttle rapid start attempts for frequently triggered macros (e.g., OnFramework)
-        if (_lastStartAttempt.TryGetValue(macro.Id, out var lastAttempt))
+        // after failing validation, frequently triggered macros (e.g. OnUpdate) don't retry (and print errors) every frame
+        var now = Environment.TickCount64;
+        if (_startBlockedUntil.TryGetValue(macro.Id, out var blockedUntil) && now < blockedUntil)
         {
-            var timeSinceLastAttempt = DateTime.UtcNow - lastAttempt;
-            if (timeSinceLastAttempt.TotalMilliseconds < 100)
-            {
-                FrameworkLogger.Verbose($"Macro {macro.Name} start throttled (last attempt {timeSinceLastAttempt.TotalMilliseconds:F0}ms ago)");
-                return;
-            }
-        }
-        _lastStartAttempt[macro.Id] = DateTime.UtcNow;
-
-        // Prevent concurrent start attempts for the same macro
-        if (_startingMacros.TryGetValue(macro.Id, out var existingStartTask))
-        {
-            FrameworkLogger.Verbose($"Macro {macro.Name} is already starting, waiting for existing start attempt.");
-            try
-            {
-                await existingStartTask;
-            }
-            catch { } // we know, ignore
-            // Check again after waiting
-            if (_macroStates.ContainsKey(macro.Id))
-                return;
+            FrameworkLogger.Verbose($"Macro {macro.Name} failed validation recently, skipping start");
+            return;
         }
 
-        // Cache validation results to avoid repeated checks for frequently triggered macros
-        var validationCacheKey = $"{macro.Id}_{macro.Content.GetHashCode()}";
-        if (!_cachedValidationResults.TryGetValue(validationCacheKey, out var cachedValidation) || DateTime.UtcNow - cachedValidation.timestamp > TimeSpan.FromSeconds(5))
+        if (!CanRun(macro, out var reason))
         {
-            // Re-validate if cache is stale or missing
-            if (MissingRequiredPlugins(macro, out var missingPlugins))
-            {
-                FrameworkLogger.Error($"Cannot run {macro.Name}. The following plugins need to be installed: {string.Join(", ", missingPlugins)}");
-                Svc.Chat.PrintErrorMsg($"Cannot run {macro.Name}. The following plugins need to be installed: {string.Join(", ", missingPlugins)}");
-                _cachedValidationResults[validationCacheKey] = (false, DateTime.UtcNow);
-                return;
-            }
-
-            if (!macro.HasValidConfigs())
-            {
-                FrameworkLogger.Error($"Cannot run {macro.Name}. One or more of its configs failed to validate.");
-                Svc.Chat.PrintErrorMsg($"Cannot run {macro.Name}. One or more of its configs failed to validate.");
-                _cachedValidationResults[validationCacheKey] = (false, DateTime.UtcNow);
-                return;
-            }
-
-            _cachedValidationResults[validationCacheKey] = (true, DateTime.UtcNow);
+            FrameworkLogger.Error($"Cannot run {macro.Name}. {reason}");
+            Svc.Chat.PrintErrorMsg($"Cannot run {macro.Name}. {reason}");
+            _startBlockedUntil[macro.Id] = now + FailedValidationBlockMs;
+            return;
         }
-        else if (!cachedValidation.isValid)
+
+        var state = new MacroExecutionState(macro);
+        if (!_macroStates.TryAdd(macro.Id, state))
         {
-            FrameworkLogger.Verbose($"Macro {macro.Name} validation failed (cached result)");
+            state.Dispose();
             return;
         }
 
         macro.StateChanged += OnMacroStateChanged;
         macro.ContentChanged += OnMacroContentChanged;
-        var state = new MacroExecutionState(macro);
         RegisterFunctionTriggers(macro);
 
-        // Track the starting task to prevent concurrent starts
-        var startTask = Task.Run(async () =>
+        IMacroEngine engine = macro.Type switch
+        {
+            MacroType.Native => _nativeEngine,
+            MacroType.Lua => _luaEngine,
+            _ => throw new NotSupportedException($"Macro type {macro.Type} is not supported.")
+        };
+
+        // Defer dependency checking to avoid blocking main thread when rapidly executing a macro
+        _ = Task.Run(async () =>
         {
             try
             {
-                IMacroEngine engine = state.Macro.Type switch
+                var missingDependencies = await GetMissingDependenciesAsync(macro);
+                if (missingDependencies.Count > 0)
                 {
-                    MacroType.Native => _nativeEngine,
-                    MacroType.Lua => _luaEngine,
-                    _ => throw new NotSupportedException($"Macro type {state.Macro.Type} is not supported.")
-                };
+                    FrameworkLogger.Error($"Cannot run {macro.Name}. The following dependencies are not available: {string.Join(", ", missingDependencies)}");
+                    Svc.Chat.PrintErrorMsg($"Cannot run {macro.Name}. The following dependencies are not available: {string.Join(", ", missingDependencies)}");
+                    StopMacro(macro.Id);
+                    return;
+                }
 
-                _enginesByMacroId[macro.Id] = engine;
-                _macroStates[macro.Id] = state;
-
-                // Defer dependency checking to avoid blocking main thread when rapidly executing a macro
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        var (areAvailable, missingDependencies) = await AreDependenciesAvailableAsync(macro);
-                        if (!areAvailable)
-                        {
-                            FrameworkLogger.Error($"Cannot run {macro.Name}. The following dependencies are not available: {string.Join(", ", missingDependencies)}");
-                            Svc.Chat.PrintErrorMsg($"Cannot run {macro.Name}. The following dependencies are not available: {string.Join(", ", missingDependencies)}");
-                            StopMacro(macro.Id);
-                            return;
-                        }
-
-                        await SetPluginStates(macro, false);
-                    }
-                    catch (Exception ex)
-                    {
-                        FrameworkLogger.Error(ex, $"Error in deferred operations for macro {macro.Name}");
-                        StopMacro(macro.Id);
-                    }
-                });
-
-                await Svc.Framework.RunOnTick(async () =>
-                {
-                    try
-                    {
-                        FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Running");
-                        state.Macro.State = MacroState.Running;
-
-                        if (C.AutoOpenStatusWindow && _hierarchyManager.GetParentMacro(macro.Id) == null)
-                            if (_windowSystem.GetWindow<StatusWindow>() is { IsOpen: false } statusWindow)
-                                statusWindow.IsOpen = true;
-
-                        await engine.StartMacro(macro, state, state.CancellationSource.Token, triggerArgs, loopCount);
-                    }
-                    catch (Exception ex)
-                    {
-                        FrameworkLogger.Error(ex, $"Error executing macro {macro.Name}");
-                        state.Macro.State = MacroState.Error;
-                        await SetPluginStates(macro, true);
-                    }
-                });
+                await SetPluginStates(macro, false);
             }
             catch (Exception ex)
             {
-                FrameworkLogger.Error(ex, $"Error setting up macro {macro.Name}");
-                state.Macro.State = MacroState.Error;
-                await SetPluginStates(macro, true);
+                FrameworkLogger.Error(ex, $"Error in deferred operations for macro {macro.Name}");
+                StopMacro(macro.Id);
             }
         });
 
-        // Store the starting task and clear it when done
-        _startingMacros[macro.Id] = startTask;
-        state.ExecutionTask = startTask;
-
         try
         {
-            await startTask;
+            await Svc.Framework.RunOnTick(async () =>
+            {
+                FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Running");
+                macro.State = MacroState.Running;
+
+                if (C.AutoOpenStatusWindow && _hierarchyManager.GetParentMacro(macro.Id) == null)
+                    if (_windowSystem.GetWindow<StatusWindow>() is { IsOpen: false } statusWindow)
+                        statusWindow.IsOpen = true;
+
+                await engine.StartMacro(macro, state, state.CancellationSource.Token, triggerArgs, loopCount);
+            });
         }
-        finally
+        catch (Exception ex)
         {
-            _startingMacros.TryRemove(macro.Id, out _);
+            FrameworkLogger.Error(ex, $"Error executing macro {macro.Name}");
+            macro.State = MacroState.Error;
         }
 
         FrameworkLogger.Verbose($"Setting macro {macro.Id} state to Completed");
-        state.Macro.State = MacroState.Completed;
+        macro.State = MacroState.Completed;
         await SetPluginStates(macro, true);
     }
 
     /// <inheritdoc/>
-    public async void PauseMacro(string macroId)
+    public async void SetPaused(string macroId, bool paused)
     {
-        if (_macroStates.TryGetValue(macroId, out var state))
+        if (!_macroStates.TryGetValue(macroId, out var state))
+            return;
+
+        var targets = C.PropagateControlsToChildren ? _hierarchyManager.GetChildMacros(macroId).Select(c => c.Id).Prepend(macroId) : [macroId];
+        foreach (var id in targets)
         {
-            state.PauseEvent.Reset();
-            state.Macro.State = MacroState.Paused;
-            await SetPluginStates(state.Macro, true);
-
-            if (C.PropagateControlsToChildren)
-            {
-                foreach (var child in _hierarchyManager.GetChildMacros(macroId))
-                {
-                    if (_macroStates.TryGetValue(child.Id, out var childState))
-                    {
-                        childState.PauseEvent.Reset();
-                        child.State = MacroState.Paused;
-                    }
-                }
-            }
+            if (!_macroStates.TryGetValue(id, out var target)) continue;
+            if (paused)
+                target.PauseEvent.Reset();
+            else
+                target.PauseEvent.Set();
+            target.Macro.State = paused ? MacroState.Paused : MacroState.Running;
         }
-    }
 
-    /// <inheritdoc/>
-    public async void ResumeMacro(string macroId)
-    {
-        if (_macroStates.TryGetValue(macroId, out var state))
-        {
-            state.PauseEvent.Set();
-            state.Macro.State = MacroState.Running;
-            await SetPluginStates(state.Macro, false);
-
-            if (C.PropagateControlsToChildren)
-            {
-                foreach (var child in _hierarchyManager.GetChildMacros(macroId))
-                {
-                    if (_macroStates.TryGetValue(child.Id, out var childState))
-                    {
-                        childState.PauseEvent.Set();
-                        child.State = MacroState.Running;
-                    }
-                }
-            }
-        }
+        await SetPluginStates(state.Macro, paused);
     }
 
     /// <inheritdoc/>
@@ -489,7 +314,7 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
     {
         if (_macroStates.TryGetValue(macroId, out var state))
         {
-            state.CancellationSource.Cancel();
+            TryCancel(state);
             state.Macro.State = MacroState.Completed;
 
             // rest of the cleanup will be handled by OnMacroStateChanged
@@ -502,107 +327,8 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
         }
     }
 
-    /// <summary>
-    /// Forces cleanup of a macro's state (doesn't unregister triggers).
-    /// </summary>
-    /// <param name="macroId">The ID of the macro to clean up.</param>
-    public void CleanupMacro(string macroId)
-    {
-        if (_macroStates.Remove(macroId, out var state))
-        {
-            UnregisterFunctionTriggers(state.Macro);
-            state.CancellationSource.Cancel();
-            state.CancellationSource.Dispose();
-            state.Macro.StateChanged -= OnMacroStateChanged;
-            state.Macro.ContentChanged -= OnMacroContentChanged;
-        }
-
-        _enginesByMacroId.Remove(macroId, out _);
-        _cachedFunctionNames.Remove(macroId, out _);
-    }
-
     /// <inheritdoc/>
-    public void UnregisterDeletedMacro(IMacro macro)
-    {
-        ArgumentNullException.ThrowIfNull(macro);
-        StopMacro(macro.Id);
-
-        foreach (var triggerEvent in macro.Metadata.TriggerEvents.ToList())
-            UnsubscribeFromTriggerEvent(macro, triggerEvent);
-
-        _triggerEventManager.UnregisterAllTriggers(macro);
-        UnregisterFunctionTriggers(macro);
-
-        macro.ContentChanged -= OnMacroContentChanged;
-
-        if (_triggerRefreshDebounceCts.TryRemove(macro.Id, out var cts))
-        {
-            cts.Cancel();
-            try { cts.Dispose(); } catch { }
-        }
-
-        CleanupMacro(macro.Id);
-        FrameworkLogger.Debug($"Unregistered triggers and cleaned up deleted macro {macro.Name} ({macro.Id})");
-    }
-
-    /// <summary>
-    /// Invalidates cached function names for a macro when its content changes.
-    /// </summary>
-    /// <param name="macroId">The ID of the macro to invalidate cache for.</param>
-    public void InvalidateFunctionCache(string macroId)
-    {
-        _cachedFunctionNames.Remove(macroId, out _);
-        // invalidate validation cache when content changes
-        var keysToRemove = _cachedValidationResults.Keys.Where(k => k.StartsWith($"{macroId}_")).ToList();
-        foreach (var key in keysToRemove)
-            _cachedValidationResults.Remove(key, out _);
-    }
-
-    /// <inheritdoc/>
-    public void RefreshTriggersFromContent(ConfigMacro macro, bool refreshFunctionTriggersIfRunning = true)
-    {
-        ArgumentNullException.ThrowIfNull(macro);
-
-        var oldTriggers = macro.Metadata.TriggerEvents.ToList();
-        foreach (var triggerEvent in oldTriggers)
-            UnsubscribeFromTriggerEvent(macro, triggerEvent);
-
-        _metadataParser.ParseMetadata(macro.Content, macro.Metadata);
-
-        foreach (var triggerEvent in macro.Metadata.TriggerEvents)
-            SubscribeToTriggerEvent(macro, triggerEvent);
-
-        if (refreshFunctionTriggersIfRunning && _macroStates.ContainsKey(macro.Id) && _macroStates.TryGetValue(macro.Id, out var state))
-        {
-            UnregisterFunctionTriggers(state.Macro);
-            RegisterFunctionTriggers(state.Macro);
-        }
-    }
-
-    /// <inheritdoc/>
-    public void StopAllMacros() => _enginesByMacroId.Keys.Each(StopMacro);
-
-    /// <inheritdoc/>
-    public void CheckLoopPause(string macroId)
-    {
-        if (_macroStates.TryGetValue(macroId, out var state) && state.PauseAtLoop)
-        {
-            state.PauseAtLoop = false;
-            state.PauseEvent.Reset();
-            state.Macro.State = MacroState.Paused;
-        }
-    }
-
-    /// <inheritdoc/>
-    public void CheckLoopStop(string macroId)
-    {
-        if (_macroStates.TryGetValue(macroId, out var state) && state.StopAtLoop)
-        {
-            state.StopAtLoop = false;
-            state.CancellationSource.Cancel();
-            state.Macro.State = MacroState.Completed;
-        }
-    }
+    public void StopAllMacros() => _macroStates.Keys.Each(StopMacro);
 
     /// <inheritdoc/>
     public void PauseAtNextLoop(string macroId)
@@ -625,26 +351,23 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
     }
     #endregion
 
-    private bool MissingRequiredPlugins(IMacro macro, out List<string> missingPlugins)
+    private bool CanRun(IMacro macro, out string reason)
     {
-        missingPlugins = [.. macro.Metadata.PluginDependecies.Where(dep => !dep.IsNullOrEmpty() && !Svc.PluginInterface.InstalledPlugins.Any(ip => ip.InternalName == dep && ip.IsLoaded))];
-        return missingPlugins.Count > 0;
+        var missingPlugins = macro.Metadata.PluginDependecies.Where(dep => !dep.IsNullOrEmpty() && !Svc.PluginInterface.InstalledPlugins.Any(ip => ip.InternalName == dep && ip.IsLoaded)).ToList();
+        reason = missingPlugins.Count > 0 ? $"The following plugins need to be installed: {string.Join(", ", missingPlugins)}"
+            : !macro.HasValidConfigs() ? "One or more of its configs failed to validate."
+            : string.Empty;
+        return reason.Length == 0;
     }
 
     /// <summary>
     /// Checks if all dependencies for a macro are available and downloads them if needed.
     /// </summary>
     /// <param name="macro">The macro to check dependencies for.</param>
-    /// <returns>A tuple containing whether all dependencies are available and a list of missing dependencies.</returns>
-    private async Task<(bool areAvailable, List<string> missingDependencies)> AreDependenciesAvailableAsync(IMacro macro)
+    /// <returns>A description of each dependency that is unavailable.</returns>
+    private static async Task<List<string>> GetMissingDependenciesAsync(IMacro macro)
     {
-        var missingDependencies = new List<string>();
-
-        if (macro.Metadata.Dependencies.Count == 0)
-            return (true, missingDependencies);
-
-        // Process dependencies in parallel to reduce total time
-        var dependencyTasks = macro.Metadata.Dependencies.Select(async dependency =>
+        var results = await Task.WhenAll(macro.Metadata.Dependencies.Select(async dependency =>
         {
             try
             {
@@ -666,40 +389,29 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
                 if (!await dependency.IsAvailableAsync())
                     return $"{dependency.Name} ({dependency.Source}) - Not available after download attempt";
 
-                return null; // Success
+                return null;
             }
             catch (Exception ex)
             {
                 FrameworkLogger.Error(ex, $"Error checking availability of dependency {dependency.Name}");
                 return $"{dependency.Name} ({dependency.Source}) - Error: {ex.Message}";
             }
-        });
-
-        var results = await Task.WhenAll(dependencyTasks);
-        missingDependencies.AddRange(results.Where(r => r != null)!);
-
-        return (missingDependencies.Count == 0, missingDependencies);
+        }));
+        return [.. results.OfType<string>()];
     }
 
-    private async Task SetPluginStates(IMacro macro, bool state)
+    private async Task SetPluginStates(IMacro macro, bool enable)
     {
         foreach (var name in macro.Metadata.PluginsToDisable)
         {
-            if (_disableablePlugins.TryGetValue(name, out var plugin))
+            if (!_disableablePlugins.TryGetValue(name, out var plugin))
             {
-                if (state)
-                {
-                    FrameworkLogger.Info($"[{macro.Name}] Re-enabling plugin {name}");
-                    await plugin.EnableAsync();
-                }
-                else
-                {
-                    FrameworkLogger.Info($"[{macro.Name}] Disabling plugin {name}");
-                    await plugin.DisableAsync();
-                }
-            }
-            else
                 FrameworkLogger.Warning($"Plugin {name} is not registered as disableable");
+                continue;
+            }
+
+            FrameworkLogger.Info($"[{macro.Name}] {(enable ? "Re-enabling" : "Disabling")} plugin {name}");
+            await (enable ? plugin.EnableAsync() : plugin.DisableAsync());
         }
     }
 
@@ -710,7 +422,6 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
         public bool StopAtLoop { get; set; }
         public CancellationTokenSource CancellationSource { get; } = new CancellationTokenSource();
         public ManualResetEventSlim PauseEvent { get; } = new ManualResetEventSlim(true);
-        public Task? ExecutionTask { get; set; }
 
         public void Dispose()
         {
@@ -719,71 +430,60 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
         }
     }
 
-    private void OnEngineError(object? sender, MacroErrorEventArgs e) => MacroError?.Invoke(this, e);
+    private static void TryCancel(MacroExecutionState state)
+    {
+        try
+        {
+            state.CancellationSource.Cancel();
+        }
+        catch (ObjectDisposedException) { } // already completed
+    }
 
+    /// <summary>
+    /// Forgets a macro's execution state and function triggers (macro-level triggers are kept).
+    /// </summary>
+    private void RemoveState(string macroId)
+    {
+        if (!_macroStates.TryRemove(macroId, out var state))
+            return;
+
+        UnregisterFunctionTriggers(state.Macro);
+        TryCancel(state);
+        state.CancellationSource.Dispose();
+        state.Macro.StateChanged -= OnMacroStateChanged;
+        state.Macro.ContentChanged -= OnMacroContentChanged;
+    }
+
+    #region Event handlers
     private void OnMacroStateChanged(object? sender, MacroStateChangedEventArgs e)
     {
         MacroStateChanged?.Invoke(sender, e);
 
-        if (e.NewState is MacroState.Completed or MacroState.Error)
+        if (e.NewState is not (MacroState.Completed or MacroState.Error))
+            return;
+
+        if (sender is IMacro macro && macro.Metadata.TriggerEvents.Contains(TriggerEvent.OnAutoRetainerCharacterPostProcess))
+            _eventSources.FinishCharacterPostProcess(macro);
+
+        if (sender is TemporaryMacro temp)
         {
-            if (sender is IMacro macro)
-            {
-                if (macro.Metadata.TriggerEvents.Contains(TriggerEvent.OnAutoRetainerCharacterPostProcess))
-                {
-                    if (_arApis.TryGetValue(macro.Id, out var arApi))
-                    {
-                        FrameworkLogger.Info($"{macro.Name} character post process finished, calling FinishCharacterPostProcess()");
-                        arApi.FinishCharacterPostProcess();
-                    }
-                }
-            }
-
-            if (sender is TemporaryMacro temp)
-            {
-                if (e.NewState == MacroState.Error)
-                {
-                    var rootParent = _hierarchyManager.GetRootParentMacro(temp.Id);
-                    if (rootParent is { } parentMacro)
-                        parentMacro.State = MacroState.Error;
-                }
-                _hierarchyManager.UnregisterTemporaryMacro(e.MacroId);
-                temp.StateChanged -= OnMacroStateChanged;
-            }
-
-            if (_macroStates.Remove(e.MacroId, out var state))
-            {
-                UnregisterFunctionTriggers(state.Macro);
-                state.CancellationSource.Cancel();
-                state.CancellationSource.Dispose();
-                state.Macro.StateChanged -= OnMacroStateChanged;
-                state.Macro.ContentChanged -= OnMacroContentChanged;
-            }
-
-            _enginesByMacroId.Remove(e.MacroId, out _);
-            _startingMacros.TryRemove(e.MacroId, out _);
-            _lastStartAttempt.TryRemove(e.MacroId, out _);
+            if (e.NewState == MacroState.Error && _hierarchyManager.GetRootParentMacro(temp.Id) is { } rootParent)
+                rootParent.State = MacroState.Error;
+            _hierarchyManager.UnregisterTemporaryMacro(e.MacroId);
+            temp.StateChanged -= OnMacroStateChanged;
         }
+
+        RemoveState(e.MacroId);
     }
 
     private void OnMacroContentChanged(object? sender, MacroContentChangedEventArgs e)
     {
-        FrameworkLogger.Verbose($"Macro content changed for {e.MacroId}, invalidating function cache");
-        InvalidateFunctionCache(e.MacroId);
+        _startBlockedUntil.TryRemove(e.MacroId, out _);
 
         if (C.GetMacro(e.MacroId) is null)
             return;
 
-        if (_triggerRefreshDebounceCts.TryGetValue(e.MacroId, out var oldCts))
-        {
-            oldCts.Cancel();
-            try
-            {
-                oldCts.Dispose();
-            }
-            catch { }
-        }
-
+        CancelTriggerRefresh(e.MacroId);
         var cts = new CancellationTokenSource();
         _triggerRefreshDebounceCts[e.MacroId] = cts;
 
@@ -799,13 +499,7 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
                     if (!_triggerRefreshDebounceCts.TryGetValue(macroId, out var current) || !ReferenceEquals(current, cts))
                         return;
 
-                    _triggerRefreshDebounceCts.TryRemove(macroId, out _);
-                    try
-                    {
-                        cts.Dispose();
-                    }
-                    catch { }
-
+                    CancelTriggerRefresh(macroId);
                     if (C.GetMacro(macroId) is ConfigMacro configMacro)
                         RefreshTriggersFromContent(configMacro);
                 });
@@ -815,77 +509,63 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
             TaskScheduler.Default);
     }
 
-    #region Triggers
-    private void OnTriggerEventOccurred(object? sender, TriggerEventArgs e)
+    private void CancelTriggerRefresh(string macroId)
     {
-        if (sender is IMacro macro)
+        if (_triggerRefreshDebounceCts.TryRemove(macroId, out var cts))
         {
-            if (macro is ConfigMacro && C.GetMacro(macro.Id) is null) // orphaned ConfigMacro
-            {
-                // don't run triggers for orphaned macros, unregister them
-                FrameworkLogger.Warning($"Skipping trigger event {e.EventType} for deleted macro {macro.Name} ({macro.Id}); unregistering orphaned triggers");
-                _triggerEventManager.UnregisterAllTriggers(macro);
-                return;
-            }
-
-            if (_macroStates.ContainsKey(macro.Id))
-            {
-                FrameworkLogger.Debug($"Skipping trigger event for macro {macro.Name} - cannot start");
-                return;
-            }
-
-            if (macro is TemporaryMacro)
-            {
-                FrameworkLogger.Verbose($"Processing temporary macro {macro.Id}");
-                FrameworkLogger.Verbose($"Subscribing to state changes for temporary macro {macro.Id}");
-                macro.StateChanged += OnMacroStateChanged;
-                _ = StartMacro(macro, e);
-            }
-            else
-                _ = StartMacro(macro, e);
+            cts.Cancel();
+            try { cts.Dispose(); } catch { }
         }
     }
 
+    private void OnTriggerEventOccurred(object? sender, TriggerEventArgs e)
+    {
+        if (sender is not IMacro macro)
+            return;
+
+        if (macro is ConfigMacro && C.GetMacro(macro.Id) is null) // orphaned ConfigMacro
+        {
+            // don't run triggers for orphaned macros, unregister them
+            FrameworkLogger.Warning($"Skipping trigger event {e.EventType} for deleted macro {macro.Name} ({macro.Id}); unregistering orphaned triggers");
+            _triggerEventManager.UnregisterAllTriggers(macro);
+            return;
+        }
+
+        _ = StartMacro(macro, 0, e);
+    }
+
     /// <summary>
-    /// Handles function execution requests from trigger events.
+    /// Calls a trigger function in the Lua state of its (running) macro.
     /// </summary>
-    /// <param name="sender">The sender of the event.</param>
-    /// <param name="e">The function execution request event arguments.</param>
     private void OnFunctionExecutionRequested(object? sender, FunctionExecutionRequestedEventArgs e)
     {
         try
         {
-            if (GetEngineForMacro(e.MacroId) is not NLuaMacroEngine nluaEngine || nluaEngine.GetLuaEnvironment(e.MacroId) is not Lua lua)
+            if (!_macroStates.TryGetValue(e.MacroId, out var state) || state.Macro.State != MacroState.Running)
             {
-                FrameworkLogger.Debug($"Skipping function {e.FunctionName} for macro {e.MacroId} - Lua environment not available"); // maybe error?
+                FrameworkLogger.Debug($"Skipping function {e.FunctionName} for stopped macro {e.MacroId}");
                 return;
             }
 
-            if (C.GetMacro(e.MacroId) is { State: MacroState.Running } macro)
+            if (_luaEngine.GetLuaEnvironment(e.MacroId) is not Lua lua)
             {
-                // Check if the function exists in the Lua environment before trying to call it
-                // This happens the first few frames if you have a trigger like OnUpdate
-                try
-                {
-                    var exists = lua.DoString($"return {e.FunctionName} ~= nil")[0] as bool?;
-                    if (exists != true)
-                    {
-                        FrameworkLogger.Debug($"Skipping function {e.FunctionName} for macro {e.MacroId} - function not yet defined in Lua environment");
-                        return;
-                    }
-                }
-                catch
-                {
-                    FrameworkLogger.Debug($"Skipping function {e.FunctionName} for macro {e.MacroId} - function not yet defined in Lua environment");
-                    return;
-                }
-
-                FrameworkLogger.Verbose($"Executing function {e.FunctionName} in macro {macro.Name}");
-                lua.SetTriggerEventData(e.TriggerArgs);
-                lua.DoString($"{e.FunctionName}()"); // call in the parent's lua state
+                FrameworkLogger.Debug($"Skipping function {e.FunctionName} for macro {e.MacroId} - Lua environment not available");
+                return;
             }
-            else
-                FrameworkLogger.Debug($"Skipping function {e.FunctionName} for stopped macro {e.MacroId}");
+
+            // the function isn't defined for the first few frames, until the script body has run
+            if (lua[e.FunctionName] is not LuaFunction function)
+            {
+                FrameworkLogger.Debug($"Skipping function {e.FunctionName} for macro {e.MacroId} - function not yet defined in Lua environment");
+                return;
+            }
+
+            using (function)
+            {
+                FrameworkLogger.Verbose($"Executing function {e.FunctionName} in macro {state.Macro.Name}");
+                lua.SetTriggerEventData(e.TriggerArgs);
+                function.Call(); // call in the parent's lua state
+            }
         }
         catch (Exception ex)
         {
@@ -893,275 +573,28 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
         }
     }
 
-    private void SubscribeToTriggerEvents()
-    {
-        foreach (var macro in C.Macros)
-        {
-            // Parse metadata from content to ensure filters and triggers are loaded
-            if (macro is ConfigMacro configMacro)
-            {
-                var parsedMetadata = _metadataParser.ParseMetadata(configMacro.Content, configMacro.Metadata);
-                configMacro.Metadata = parsedMetadata;
-            }
-
-            foreach (var triggerEvent in macro.Metadata.TriggerEvents)
-                SubscribeToTriggerEvent(macro, triggerEvent);
-
-            macro.ContentChanged += OnMacroContentChanged;
-        }
-
-        Svc.Framework.Update += OnFrameworkUpdate;
-        Svc.Condition.ConditionChange += OnConditionChange;
-        Svc.ClientState.TerritoryChanged += OnTerritoryChanged;
-        Svc.Chat.ChatMessage += OnChatMessage;
-        Svc.ClientState.Login += OnLogin;
-        Svc.ClientState.Logout += OnLogout;
-        Svc.DutyState.DutyStarted += OnDutyStarted;
-        Svc.DutyState.DutyWiped += OnDutyWiped;
-        Svc.DutyState.DutyCompleted += OnDutyCompleted;
-    }
-
-    private HashSet<string> _activePlugins = [];
-    private long _combatStart = 0;
-    private void OnFrameworkUpdate(IFramework framework)
-    {
-        if (Svc.Condition[ConditionFlag.InCombat])
-        {
-            if (_combatStart == 0)
-            {
-                _combatStart = DateTime.Now.Ticks;
-                var startTimestamp = _combatStart;
-                var opponents = Svc.Objects.Where(o => o.TargetObjectId == Player.Object?.GameObjectId).Select(o => new EntityWrapper(o));
-                _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnCombatStart, new { startTimestamp, opponents });
-                FrameworkLogger.Verbose($"Combat started against {string.Join(", ", opponents.Select(o => o.Name))} at {startTimestamp}");
-            }
-        }
-        else
-        {
-            if (_combatStart != 0)
-            {
-                var endTimestamp = DateTime.Now.Ticks;
-                var duration = TimeSpan.FromTicks(endTimestamp - _combatStart).TotalSeconds;
-                _combatStart = 0;
-                _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnCombatEnd, new { endTimestamp, duration });
-                FrameworkLogger.Verbose($"Combat ended at {endTimestamp} in {duration:F2} seconds");
-            }
-        }
-
-        var lastActivePlugins = _activePlugins;
-        var currentActivePlugins = Svc.PluginInterface.InstalledPlugins.Where(p => p.IsLoaded).Select(p => p.InternalName).ToHashSet();
-        lastActivePlugins.SymmetricExceptWith(currentActivePlugins);
-        if (lastActivePlugins.Count > 0)
-        {
-            var diffs = new List<PluginWrapper>();
-            lastActivePlugins.Where(currentActivePlugins.Contains).ToList().ForEach(plugin => diffs.Add(new PluginWrapper() { Name = plugin, IsLoaded = true }));
-            lastActivePlugins.Where(plugin => !currentActivePlugins.Contains(plugin)).ToList().ForEach(plugin => diffs.Add(new PluginWrapper() { Name = plugin, IsLoaded = false }));
-            var eventData = new Dictionary<string, object> { { "changedPlugins", diffs } };
-            _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnActivePluginsChanged, new { eventData });
-            FrameworkLogger.Verbose($"[{nameof(TriggerEvent.OnActivePluginsChanged)}] fired [{string.Join(", ", diffs)}]");
-        }
-        _activePlugins = currentActivePlugins;
-
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnUpdate);
-    }
-
-    private record class PluginWrapper
-    {
-        public required string Name;
-        public bool IsLoaded;
-        public override string ToString() => $"{Name}: {IsLoaded}";
-    }
-
-    private void OnAddonEventWithContext(AddonEvent type, AddonArgs args, string addonName, string eventTypeStr)
-    {
-        var eventData = new Dictionary<string, object>
-        {
-            { "type", type },
-            { "args", args },
-            { "AddonName", addonName },
-            { "EventType", eventTypeStr }
-        };
-        FrameworkLogger.Verbose($"[{nameof(OnAddonEventWithContext)}] fired [{addonName}, {eventTypeStr}, {type}, {args}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnAddonEvent, eventData);
-    }
-
-    private void EnsureAddonListenerRegistered(AddonEvent eventType, string addonName)
-    {
-        var key = (eventType, addonName);
-        var eventTypeStr = eventType.ToString();
-        _addonListenerHandlers.AddOrUpdate(key,
-            _ => (1, (type, args) => OnAddonEventWithContext(type, args, addonName, eventTypeStr)),
-            (_, existing) => (existing.RefCount + 1, existing.Handler));
-        var (refCount, handler) = _addonListenerHandlers[key];
-        if (refCount == 1)
-            Svc.AddonLifecycle.RegisterListener(eventType, addonName, handler);
-    }
-
-    private void UnensureAddonListenerRegistered(AddonEvent eventType, string addonName)
-    {
-        var key = (eventType, addonName);
-        if (!_addonListenerHandlers.TryGetValue(key, out var existing))
-            return;
-        var newCount = existing.RefCount - 1;
-        if (newCount <= 0)
-        {
-            Svc.AddonLifecycle.UnregisterListener(eventType, addonName, existing.Handler);
-            _addonListenerHandlers.TryRemove(key, out _);
-        }
-        else
-            _addonListenerHandlers[key] = (newCount, existing.Handler);
-    }
-
-    private void OnConditionChange(ConditionFlag flag, bool value)
-    {
-        var eventData = new Dictionary<string, object> { { "flag", flag }, { "value", value } };
-        FrameworkLogger.Verbose($"[{nameof(OnConditionChange)}] fired [{flag}, {value}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnConditionChange, eventData);
-    }
-
-    private void OnTerritoryChanged(uint territoryType)
-    {
-        var eventData = new Dictionary<string, object> { { "territoryType", territoryType } };
-        FrameworkLogger.Verbose($"[{nameof(OnTerritoryChanged)}] fired [{territoryType}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnTerritoryChange, eventData);
-    }
-
-    private void OnChatMessage(IHandleableChatMessage message)
-    {
-        var eventData = new Dictionary<string, object> { { "type", message.LogKind }, { "timestamp", message.Timestamp }, { "sender", message.Sender.TextValue }, { "message", message.Message.TextValue }, { "isHandled", message.IsHandled } };
-        FrameworkLogger.Verbose($"[{nameof(OnChatMessage)}] fired [{message.LogKind}, {message.Timestamp}, {message.Sender}, {message.Message.TextValue}, {message.IsHandled}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnChatMessage, eventData);
-    }
-
-    private void OnLogin()
-    {
-        FrameworkLogger.Verbose($"[{nameof(OnLogin)}] fired");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnLogin);
-    }
-
-    private void OnLogout(int type, int code)
-    {
-        var eventData = new Dictionary<string, object> { { "type", type }, { "code", code } };
-        FrameworkLogger.Verbose($"[{nameof(OnLogout)}] fired [{type}, {code}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnLogout, eventData);
-    }
-
-    private void OnDutyStarted(IDutyStateEventArgs args)
-    {
-        FrameworkLogger.Verbose($"[{nameof(OnDutyStarted)}] fired [{args}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnDutyStarted);
-    }
-
-    private void OnDutyWiped(IDutyStateEventArgs args)
-    {
-        FrameworkLogger.Verbose($"[{nameof(OnDutyWiped)}] fired [{args}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnDutyWiped);
-    }
-
-    private void OnDutyCompleted(IDutyStateEventArgs args)
-    {
-        FrameworkLogger.Verbose($"[{nameof(OnDutyCompleted)}] fired [{args}]");
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnDutyCompleted);
-    }
-
-    private unsafe long OnEmoteFuncDetour(IntPtr a1, GameObject* source, ushort emoteId, GameObjectId targetId, long a5)
-    {
-        FrameworkLogger.Verbose($"Emote performed: Source={source->NameString}, EmoteId={emoteId}, TargetId={targetId.Id}, a5={a5}");
-        var eventData = new Dictionary<string, object> { { "SourceId", source->EntityId }, { "SourceName", source->NameString }, { "EmoteId", emoteId }, { "TargetId", targetId } };
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnEmote, eventData);
-        return OnEmoteFuncHook!.Original(a1, source, emoteId, targetId, a5);
-    }
-
-    private void CheckCharacterPostProcess(IMacro macro)
-    {
-        if (C.ARCharacterPostProcessExcludedCharacters.Any(x => x == Svc.PlayerState.ContentId))
-            FrameworkLogger.Info($"Skipping post process macro {macro.Name} for current character.");
-        else
-            _arApis[macro.Id].RequestCharacterPostprocess();
-    }
-
-    private void DoCharacterPostProcess(IMacro macro)
-    {
-        if (C.ARCharacterPostProcessExcludedCharacters.Any(x => x == Svc.PlayerState.ContentId))
-        {
-            FrameworkLogger.Info($"Skipping post process macro {macro.Name} for current character.");
-            return;
-        }
-
-        FrameworkLogger.Info($"Executing post process macro {macro.Name} for current character.");
-        var eventData = new Dictionary<string, object> { { "Id", Svc.PlayerState.ContentId }, { "Name", Svc.PlayerState.CharacterName } };
-        _ = _triggerEventManager.RaiseTriggerEvent(TriggerEvent.OnAutoRetainerCharacterPostProcess, eventData);
-    }
-
-    private void OnMacroControlRequested(object? sender, MacroControlEventArgs e)
-    {
-        FrameworkLogger.Verbose($"Received MacroControlRequested event for macro {e.MacroId} with control type {e.ControlType}");
-
-        if (e.ControlType == MacroControlType.Start)
-        {
-            if (_macroStates.ContainsKey(e.MacroId))
-            {
-                FrameworkLogger.Debug($"Skipping start request for macro {e.MacroId} - already running");
-                return;
-            }
-
-            if (C.GetMacro(e.MacroId) is { } macro)
-            {
-                FrameworkLogger.Info($"Starting macro {e.MacroId}");
-                _ = StartMacro(macro);
-            }
-            else if (sender is IMacroEngine engine && engine.GetTemporaryMacro(e.MacroId) is { } tempMacro)
-            {
-                FrameworkLogger.Verbose($"Starting temporary macro {e.MacroId}");
-                FrameworkLogger.Verbose($"Subscribing to state changes for temporary macro {e.MacroId}");
-                tempMacro.StateChanged += OnMacroStateChanged;
-                _ = StartMacro(tempMacro);
-            }
-            else
-                FrameworkLogger.Warning($"Could not find macro {e.MacroId} to start");
-        }
-        else if (e.ControlType == MacroControlType.Stop)
-            StopMacro(e.MacroId);
-    }
-
-    private void OnMacroStepCompleted(object? sender, MacroStepCompletedEventArgs e)
-        => FrameworkLogger.Verbose($"Macro step completed for {e.MacroId}: {e.StepIndex}/{e.TotalSteps}");
-
     private void OnLoopControlRequested(object? sender, LoopControlEventArgs e)
     {
-        if (_macroStates.TryGetValue(e.MacroId, out var state))
+        if (!_macroStates.TryGetValue(e.MacroId, out var state))
+            return;
+
+        if (e.ControlType == LoopControlType.Pause && state.PauseAtLoop)
         {
-            if (e.ControlType == LoopControlType.Pause && state.PauseAtLoop)
-            {
-                state.PauseAtLoop = false;
-                state.PauseEvent.Reset();
-                state.Macro.State = MacroState.Paused;
-            }
-            else if (e.ControlType == LoopControlType.Stop && state.StopAtLoop)
-            {
-                state.StopAtLoop = false;
-                state.CancellationSource.Cancel();
-                state.Macro.State = MacroState.Completed;
-            }
+            state.PauseAtLoop = false;
+            state.PauseEvent.Reset();
+            state.Macro.State = MacroState.Paused;
+        }
+        else if (e.ControlType == LoopControlType.Stop && state.StopAtLoop)
+        {
+            state.StopAtLoop = false;
+            TryCancel(state);
+            state.Macro.State = MacroState.Completed;
         }
     }
 
     private void OnMacroExecutionRequested(object? sender, MacroExecutionRequestedEventArgs e)
     {
         FrameworkLogger.Verbose($"Received macro execution request for {e.Macro.Name}");
-
-        if (_macroStates.ContainsKey(e.Macro.Id))
-        {
-            FrameworkLogger.Debug($"Skipping execution request for macro {e.Macro.Name} - already running");
-            return;
-        }
-
-        if (e.Macro is TemporaryMacro tempMacro)
-        {
-            FrameworkLogger.Verbose($"Subscribing to state changes for temporary macro {tempMacro.Id}");
-            tempMacro.StateChanged += OnMacroStateChanged;
-        }
-
         _ = StartMacro(e.Macro, e.LoopCount, e.TriggerArgs);
     }
     #endregion
@@ -1194,33 +627,15 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
         }
     }
 
-    private static void TryCancel(MacroExecutionState state)
-    {
-        try
-        {
-            state.CancellationSource.Cancel();
-        }
-        catch (ObjectDisposedException) { } // already completed
-    }
-
     /// <inheritdoc/>
     public void Dispose()
     {
         _isShuttingDown = true;
-        _nativeEngine.MacroError -= OnEngineError;
-        _luaEngine.MacroError -= OnEngineError;
         _triggerEventManager.TriggerEventOccurred -= OnTriggerEventOccurred;
-
-        _nativeEngine.MacroControlRequested -= OnMacroControlRequested;
-        _luaEngine.MacroControlRequested -= OnMacroControlRequested;
-        _nativeEngine.MacroStepCompleted -= OnMacroStepCompleted;
-        _luaEngine.MacroStepCompleted -= OnMacroStepCompleted;
-
+        _triggerEventManager.FunctionExecutionRequested -= OnFunctionExecutionRequested;
         _nativeEngine.MacroExecutionRequested -= OnMacroExecutionRequested;
         _luaEngine.MacroExecutionRequested -= OnMacroExecutionRequested;
-
         _nativeEngine.LoopControlRequested -= OnLoopControlRequested;
-        _luaEngine.LoopControlRequested -= OnLoopControlRequested;
 
         // anything still running past StopAsync's timeout at least gets told to stop
         _macroStates.Values.Each(s =>
@@ -1229,48 +644,13 @@ public partial class MacroScheduler : IMacroScheduler, IHostedService, IDisposab
             s.Dispose();
         });
         _macroStates.Clear();
-        _enginesByMacroId.Clear();
-        _startingMacros.Clear();
-        _lastStartAttempt.Clear();
-        _cachedValidationResults.Clear();
+        _startBlockedUntil.Clear();
 
         C.Macros.ForEach(m => m.ContentChanged -= OnMacroContentChanged);
+        foreach (var macroId in _triggerRefreshDebounceCts.Keys.ToList())
+            CancelTriggerRefresh(macroId);
 
-        foreach (var (_, debounceCts) in _triggerRefreshDebounceCts)
-        {
-            debounceCts.Cancel();
-            try
-            {
-                debounceCts.Dispose();
-            }
-            catch { }
-        }
-
-        _triggerRefreshDebounceCts.Clear();
-
-        Svc.Framework.Update -= OnFrameworkUpdate;
-        Svc.Condition.ConditionChange -= OnConditionChange;
-        Svc.ClientState.TerritoryChanged -= OnTerritoryChanged;
-        Svc.Chat.ChatMessage -= OnChatMessage;
-        Svc.ClientState.Login -= OnLogin;
-        Svc.ClientState.Logout -= OnLogout;
-        Svc.DutyState.DutyStarted -= OnDutyStarted;
-        Svc.DutyState.DutyWiped -= OnDutyWiped;
-        Svc.DutyState.DutyCompleted -= OnDutyCompleted;
-        foreach (var (key, (_, handler)) in _addonListenerHandlers.ToList())
-            Svc.AddonLifecycle.UnregisterListener(key.EventType, key.AddonName, handler);
-        _addonListenerHandlers.Clear();
-
-        _nativeEngine.Dispose();
-        _luaEngine.Dispose();
-        _arApis.Values.Each(a => a.Dispose());
-        _arApis.Clear();
         _addonEvents.Clear();
-
         _triggerEventManager.Dispose();
-        OnEmoteFuncHook?.Dispose();
     }
-
-    /// <inheritdoc/>
-    public IMacroEngine? GetEngineForMacro(string macroId) => _enginesByMacroId.TryGetValue(macroId, out var engine) ? engine : null;
 }

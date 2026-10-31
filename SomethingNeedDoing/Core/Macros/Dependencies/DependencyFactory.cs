@@ -1,3 +1,4 @@
+using SomethingNeedDoing.Core.Github;
 using SomethingNeedDoing.Core.Interfaces;
 
 namespace SomethingNeedDoing.Core;
@@ -17,32 +18,21 @@ public partial class DependencyFactory
     /// <returns>The created dependency.</returns>
     public IMacroDependency CreateDependency(string source)
     {
-        var normalizedSource = NormalizeSource(source);
-
-        if (normalizedSource.StartsWith("git://"))
+        if ((source.StartsWith("git://") || source.Contains("github.com")) && GitHubRef.TryParse(source, out var file))
         {
-            var parts = normalizedSource[6..].Split('/');
-            if (parts.Length >= 2)
+            var gitDep = new GitDependency
             {
-                var owner = parts[0];
-                var repo = parts[1];
-                var branch = parts.Length > 2 ? parts[2] : "main";
-                var path = parts.Length > 3 ? string.Join("/", parts.Skip(3)) : null;
-
-                var gitDep = new GitDependency
+                Name = file.Repo,
+                Source = source.StartsWith("git://") ? source : file.ToGitSource(),
+                GitInfo = new GitInfo
                 {
-                    Name = repo,
-                    Source = normalizedSource,
-                    GitInfo = new GitInfo
-                    {
-                        RepositoryUrl = $"https://github.com/{owner}/{repo}",
-                        Branch = branch,
-                        FilePath = path ?? string.Empty
-                    }
-                };
-                gitDep.SetGitService(_gitService);
-                return gitDep;
-            }
+                    RepositoryUrl = file.RepositoryUrl,
+                    Branch = file.Branch,
+                    FilePath = file.Path
+                }
+            };
+            gitDep.SetGitService(_gitService);
+            return gitDep;
         }
         else if (IsMacroId(source))
         {
@@ -66,42 +56,15 @@ public partial class DependencyFactory
             };
         }
 
-        var httpDep = new HttpDependency()
+        return new HttpDependency()
         {
             Name = "latest",
             Source = source
         };
-        return httpDep;
     }
 
     /// <summary>
     /// Checks if a string looks like a macro ID (GUID format).
     /// </summary>
     private static bool IsMacroId(string source) => !string.IsNullOrWhiteSpace(source) && Guid.TryParse(source, out _);
-
-    /// <summary>
-    /// Normalizes a source URL to a consistent format.
-    /// </summary>
-    private string NormalizeSource(string source)
-    {
-        if (source.Contains("github.com"))
-        {
-            var uri = new Uri(source);
-            var pathParts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (pathParts.Length >= 2)
-            {
-                var owner = pathParts[0];
-                var repo = pathParts[1];
-                var branch = pathParts.Length > 3 && pathParts[2] == "blob" ? pathParts[3] : "main";
-                var path = pathParts.Length > 4 && pathParts[2] == "blob" ? string.Join("/", pathParts.Skip(4)) : null;
-
-                if (path != null)
-                    path = Uri.UnescapeDataString(path);
-
-                return $"git://{owner}/{repo}/{branch}/{path}";
-            }
-        }
-
-        return source;
-    }
 }

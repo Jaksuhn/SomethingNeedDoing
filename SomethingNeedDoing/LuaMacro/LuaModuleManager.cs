@@ -1,4 +1,4 @@
-﻿using NLua;
+using NLua;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.Documentation;
 using SomethingNeedDoing.LuaMacro.Modules;
@@ -10,7 +10,7 @@ namespace SomethingNeedDoing.LuaMacro;
 [RegisterSingleton, AutoConstruct]
 public partial class LuaModuleManager
 {
-    private readonly List<ILuaModule> _modules = [];
+    private readonly List<LuaModuleBase> _modules = [];
     private readonly LuaDocumentation _documentation;
 
     [AutoPostConstruct]
@@ -30,32 +30,21 @@ public partial class LuaModuleManager
         RegisterModule(new QuestsModule());
         RegisterModule(new SystemModule());
 
-        // Register Engines module documentation statically
+        // the Engines module is created per macro, so its documentation is registered statically
         EnginesModule.RegisterDocumentationStatic(_documentation);
     }
 
     public void RegisterAll(Lua lua) => _modules.ForEach(m => m.Register(lua));
-    public T? GetModule<T>() where T : class, ILuaModule => _modules.FirstOrDefault(m => m is T, null) as T;
+    public T? GetModule<T>() where T : class, ILuaModule => _modules.OfType<T>().FirstOrDefault();
 
-    public void RegisterModule(ILuaModule module)
+    public void RegisterModule(LuaModuleBase module)
     {
-        if (module is LuaModuleBase baseModule)
-            baseModule.SetModuleManager(this);
-        if (module is LuaModuleBase baseModule2 && baseModule2.ParentType != null)
-        {
-            if (_modules.FirstOrDefault(m => m.GetType() == baseModule2.ParentType) is { } parent)
-                baseModule2.ParentModule = parent;
-            else
-                throw new InvalidOperationException($"Parent module of type {baseModule2.ParentType.Name} not found for {module.GetType().Name}");
-        }
+        module.SetModuleManager(this);
+        if (module.ParentType != null)
+            module.ParentModule = _modules.FirstOrDefault(m => m.GetType() == module.ParentType)
+                ?? throw new InvalidOperationException($"Parent module of type {module.ParentType.Name} not found for {module.GetType().Name}");
 
         _modules.Add(module);
-
-        if (module is IPCModule ipcModule)
-            ipcModule.RegisterDocumentation(_documentation);
-        else if (module is EnginesModule enginesModule)
-            enginesModule.RegisterDocumentation(_documentation);
-        else
-            _documentation.RegisterModule(module);
+        module.RegisterDocumentation(_documentation);
     }
 }

@@ -123,7 +123,7 @@ public class CreateMacroModal(GitMacroManager gitManager)
         try
         {
             // Create the git macro using the GitMacroManager
-            var macro = await gitManager.AddGitMacroFromUrl(_githubUrl);
+            var macro = await gitManager.Import(_githubUrl);
 
             // Update the name if provided
             if (!string.IsNullOrWhiteSpace(_newMacroName) && _newMacroName != "New Macro")

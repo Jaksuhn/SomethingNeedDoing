@@ -1,5 +1,6 @@
 using Dalamud.Interface.Utility.Raii;
 using ECommons.ImGuiMethods;
+using SomethingNeedDoing.Core.Github;
 using SomethingNeedDoing.Managers;
 using System.Threading.Tasks;
 
@@ -12,7 +13,7 @@ public partial class VersionHistoryModal
     private static Vector2 Size = new(600, 400);
     private static bool IsOpen;
     private static ConfigMacro? _macro;
-    private static List<GitMacroManager.GitCommit> _commits = [];
+    private static List<GitCommit> _commits = [];
     private static bool _isLoading;
     private static string _errorMessage = string.Empty;
 

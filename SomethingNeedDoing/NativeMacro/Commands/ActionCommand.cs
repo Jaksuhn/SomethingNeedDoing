@@ -37,11 +37,11 @@ public class ActionCommand(string text, string actionName) : MacroCommandBase(te
         var craftAction = Game.Crafting.FindCraftActionByNameAndJob(actionName, Player.Job);
         await context.RunOnFramework(() =>
         {
-            if (ConditionModifier?.Conditions.FirstOrDefault() is { } cnd)
+            if (ConditionModifier is { } cnd)
             {
-                if (!Game.Crafting.GetCondition().ToString().EqualsIgnoreCase(cnd))
+                if (!cnd.IsMet(Game.Crafting.GetCondition().ToString()))
                 {
-                    FrameworkLogger.Debug($"Condition skip: condition is {Game.Crafting.GetCondition()}, required condition is {cnd}");
+                    FrameworkLogger.Debug($"Condition skip: condition is {Game.Crafting.GetCondition()}, required condition is {cnd.ModifierText}");
                     return;
                 }
             }

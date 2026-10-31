@@ -106,7 +106,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
         ImGui.SameLine(0, 5);
 
         if (ImGuiUtils.IconButton(FontAwesomeIcon.FolderPlus, "Create a new folder"))
-            CreateFolderModal.Open();
+            TextInputModal.OpenCreateFolder();
     }
 
     private void DrawFolderTree()
@@ -215,7 +215,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
         ImGui.Separator();
 
         if (ImGui.MenuItem("Rename Folder"))
-            RenameFolderModal.Open(folderPath);
+            TextInputModal.OpenRenameFolder(folderPath);
 
         if (ImGui.MenuItem("Delete Folder"))
         {
@@ -315,13 +315,11 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
         }
 
         if (ImGuiUtils.IconMenuItem(FontAwesomeHelper.IconRename, "Rename"))
-            RenameModal.Open(macro);
+            TextInputModal.OpenRenameMacro(macro);
 
         if (ImGuiUtils.IconMenuItem(FontAwesomeHelper.IconDelete, "Delete"))
         {
             var currentFolderId = _state.SelectedFolderId;
-            var expandedFoldersCopy = new HashSet<string>(_state.ExpandedFolders);
-
             scheduler.UnregisterDeletedMacro(macro);
             macro.Delete();
 
@@ -330,10 +328,6 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
 
             if (!string.IsNullOrEmpty(currentFolderId))
                 _state.SelectedFolderId = currentFolderId;
-
-            _state.ExpandedFolders.Clear();
-            foreach (var folder in expandedFoldersCopy)
-                _state.ExpandedFolders.Add(folder);
 
             _state.ExpandedFolders.Add(currentFolderId);
         }
@@ -373,11 +367,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             {
                 if (!isInRoot)
                 {
-                    var expandedFoldersCopy = new HashSet<string>(_state.ExpandedFolders);
                     MoveMacroToFolder(macro.Id, string.Empty);
-                    _state.ExpandedFolders.Clear();
-                    foreach (var folder in expandedFoldersCopy)
-                        _state.ExpandedFolders.Add(folder);
                 }
                 ImGui.CloseCurrentPopup();
             }
@@ -397,12 +387,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
                     {
                         if (!isCurrentFolder)
                         {
-                            var expandedFoldersCopy = new HashSet<string>(_state.ExpandedFolders);
                             MoveMacroToFolder(macro.Id, folder);
-                            _state.ExpandedFolders.Clear();
-                            foreach (var f in expandedFoldersCopy)
-                                _state.ExpandedFolders.Add(f);
-                            _state.ExpandedFolders.Add(folder);
                         }
                         ImGui.CloseCurrentPopup();
                     }
@@ -411,7 +396,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
 
             ImGui.Separator();
             if (ImGui.MenuItem("Create new folder..."))
-                CreateFolderModal.Open();
+                TextInputModal.OpenCreateFolder();
         }
     }
 

@@ -54,20 +54,13 @@ public interface IMacro
     void Delete();
 }
 
+/// <summary>
+/// Scheduler-owned state of a running macro that engines can observe.
+/// </summary>
 public interface IMacroInstance : IDisposable
 {
     public IMacro Macro { get; }
-    public CancellationTokenSource CancellationSource { get; }
     public ManualResetEventSlim PauseEvent { get; }
-    public Task? ExecutionTask { get; set; }
-    public bool PauseAtLoop { get; set; }
-    public bool StopAtLoop { get; set; }
-
-    public new void Dispose()
-    {
-        CancellationSource.Dispose();
-        PauseEvent.Dispose();
-    }
 }
 
 /// <summary>
@@ -98,23 +91,6 @@ public abstract class MacroBase : IMacro
             }
         }
     } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the content with change notification.
-    /// </summary>
-    protected string ContentWithChangeNotification
-    {
-        get => Content;
-        set
-        {
-            if (Content != value)
-            {
-                var oldContent = Content;
-                Content = value;
-                ContentChanged?.Invoke(this, new MacroContentChangedEventArgs(Id, value, oldContent));
-            }
-        }
-    }
 
     /// <inheritdoc/>
     public MacroState State

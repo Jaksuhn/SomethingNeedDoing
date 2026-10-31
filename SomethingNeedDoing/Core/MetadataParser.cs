@@ -26,7 +26,68 @@ public partial class MetadataParser
 
     private static readonly ISerializer _serializer = new SerializerBuilder()
         .WithNamingConvention(UnderscoredNamingConvention.Instance)
+        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
         .Build();
+
+    #region YAML schema
+    // Loosely typed scalars are object so any YAML scalar deserializes (as a string) and is parsed leniently below.
+    private sealed class MetadataYaml
+    {
+        public object? Author { get; set; }
+        public object? Version { get; set; }
+        public object? Description { get; set; }
+        public List<string>? Triggers { get; set; }
+        public List<string>? PluginDependencies { get; set; }
+        public List<string>? PluginsToDisable { get; set; }
+        public object? CraftingLoop { get; set; }
+        public object? CraftLoopCount { get; set; }
+        public AddonEventYaml? AddonEvent { get; set; }
+        public ChatFilterYaml? ChatMessageFilter { get; set; }
+        public Dictionary<string, ChatFilterYaml>? FunctionChatFilters { get; set; }
+        public List<DependencyYaml>? Dependencies { get; set; }
+        public Dictionary<string, object?>? Configs { get; set; } // a config is either a scalar default value or a map
+    }
+
+    private sealed class AddonEventYaml
+    {
+        public string? AddonName { get; set; }
+        public string? EventType { get; set; }
+    }
+
+    private sealed class ChatFilterYaml
+    {
+        public List<string>? Channels { get; set; }
+        public string? MessageContains { get; set; }
+        public string? SenderContains { get; set; }
+        public string? MessageRegex { get; set; }
+
+        public ChatMessageFilterConfig ToConfig() => new()
+        {
+            Channels = Channels?.Select(c => Enum.TryParse<XivChatType>(c, true, out var type) ? type : (XivChatType?)null).OfType<XivChatType>().ToList(),
+            MessageContains = MessageContains,
+            SenderContains = SenderContains,
+            MessageRegex = MessageRegex,
+        };
+
+        public static ChatFilterYaml From(ChatMessageFilterConfig filter) => new()
+        {
+            Channels = filter.Channels is { Count: > 0 } ? [.. filter.Channels.Select(c => c.ToString().ToLower())] : null,
+            MessageContains = NullIfEmpty(filter.MessageContains),
+            SenderContains = NullIfEmpty(filter.SenderContains),
+            MessageRegex = NullIfEmpty(filter.MessageRegex),
+        };
+    }
+
+    private sealed class DependencyYaml
+    {
+        public string? Source { get; set; }
+        public string? Name { get; set; }
+        public string? Type { get; set; }
+    }
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+    private static List<T>? NullIfEmpty<T>(IEnumerable<T> values) => values.Any() ? [.. values] : null;
+    #endregion
 
     /// <summary>
     /// Parses metadata from macro content.
@@ -46,95 +107,58 @@ public partial class MetadataParser
 
         try
         {
-            if (_deserializer.Deserialize<Dictionary<string, object>>(metadataContent) is not { } yaml) return metadata;
+            if (_deserializer.Deserialize<MetadataYaml>(metadataContent) is not { } yaml) return metadata;
 
-            if (yaml.TryGetValue("author", out var author))
-                metadata.Author = author?.ToString() ?? string.Empty;
+            if (yaml.Author != null)
+                metadata.Author = yaml.Author.ToString() ?? string.Empty;
 
-            if (yaml.TryGetValue("version", out var version))
-                metadata.Version = version?.ToString() ?? "1.0.0";
+            if (yaml.Version != null)
+                metadata.Version = yaml.Version.ToString() ?? "1.0.0";
 
-            if (yaml.TryGetValue("description", out var description))
-                metadata.Description = description?.ToString() ?? string.Empty;
+            if (yaml.Description != null)
+                metadata.Description = yaml.Description.ToString() ?? string.Empty;
 
-            if (yaml.TryGetValue("triggers", out var triggers))
+            if (yaml.Triggers != null)
+                metadata.TriggerEvents = [.. yaml.Triggers.Select(t => Enum.TryParse<TriggerEvent>(t, true, out var trigger) ? trigger : TriggerEvent.None).Where(t => t != TriggerEvent.None)];
+
+            if (yaml.PluginDependencies != null)
+                metadata.PluginDependecies = [.. yaml.PluginDependencies.Where(p => !string.IsNullOrEmpty(p))];
+
+            if (yaml.PluginsToDisable != null)
+                metadata.PluginsToDisable = [.. yaml.PluginsToDisable.Where(p => !string.IsNullOrEmpty(p))];
+
+            if (yaml.CraftingLoop != null)
+                metadata.CraftingLoop = yaml.CraftingLoop.ToString()?.ToLower() == "true";
+
+            if (int.TryParse(yaml.CraftLoopCount?.ToString(), out var count))
+                metadata.CraftLoopCount = count;
+
+            if (yaml.AddonEvent != null)
             {
-                if (triggers is List<object> triggerList)
-                {
-                    metadata.TriggerEvents = [.. triggerList
-                        .Select(t => t.ToString())
-                        .Where(t => !string.IsNullOrEmpty(t))
-                        .Select(t => Enum.TryParse<TriggerEvent>(t, true, out var trigger) ? trigger : TriggerEvent.None)
-                        .Where(t => t != TriggerEvent.None)];
-                }
+                metadata.AddonEventConfig = new AddonEventConfig { AddonName = yaml.AddonEvent.AddonName ?? string.Empty };
+                if (Enum.TryParse<AddonEvent>(yaml.AddonEvent.EventType, true, out var eventType))
+                    metadata.AddonEventConfig.EventType = eventType;
             }
 
-            if (yaml.TryGetValue("plugin_dependencies", out var pluginDeps))
-                if (pluginDeps is List<object> pluginList)
-                    metadata.PluginDependecies = [.. pluginList.Select(p => p.ToString() ?? string.Empty).Where(p => !string.IsNullOrEmpty(p))];
+            if (yaml.ChatMessageFilter != null)
+                metadata.ChatMessageFilter = yaml.ChatMessageFilter.ToConfig();
 
-            if (yaml.TryGetValue("plugins_to_disable", out var pluginsToDisable))
-                if (pluginsToDisable is List<object> disableList)
-                    metadata.PluginsToDisable = [.. disableList.Select(p => p.ToString() ?? string.Empty).Where(p => !string.IsNullOrEmpty(p))];
+            if (yaml.FunctionChatFilters != null)
+                foreach (var (functionName, filter) in yaml.FunctionChatFilters)
+                    if (!string.IsNullOrEmpty(functionName) && filter != null)
+                        metadata.FunctionChatFilters[functionName] = filter.ToConfig();
 
-            if (yaml.TryGetValue("crafting_loop", out var craftingLoop))
-                metadata.CraftingLoop = craftingLoop?.ToString()?.ToLower() == "true";
+            if (yaml.Dependencies != null)
+                metadata.Dependencies = [.. yaml.Dependencies.Where(d => !string.IsNullOrEmpty(d?.Source)).Select(d => _dependencyFactory.CreateDependency(d.Source!))];
 
-            if (yaml.TryGetValue("craft_loop_count", out var craftLoopCount))
-                if (int.TryParse(craftLoopCount?.ToString(), out var count))
-                    metadata.CraftLoopCount = count;
-
-            if (yaml.TryGetValue("addon_event", out var addonEvent) && addonEvent is Dictionary<object, object> addonDict)
+            if (yaml.Configs != null)
             {
-                metadata.AddonEventConfig = new AddonEventConfig();
-
-                if (addonDict.TryGetValue("addon_name", out var addonName))
-                    metadata.AddonEventConfig.AddonName = addonName?.ToString() ?? string.Empty;
-
-                if (addonDict.TryGetValue("event_type", out var eventType))
-                    if (Enum.TryParse<AddonEvent>(eventType?.ToString(), true, out var parsedEventType))
-                        metadata.AddonEventConfig.EventType = parsedEventType;
-            }
-
-            if (yaml.TryGetValue("chat_message_filter", out var chatFilter) && chatFilter is Dictionary<object, object> chatFilterDict)
-                metadata.ChatMessageFilter = ParseChatMessageFilter(chatFilterDict);
-
-            if (yaml.TryGetValue("function_chat_filters", out var functionChatFilters) && functionChatFilters is Dictionary<object, object> functionFiltersDict)
-            {
-                foreach (var kvp in functionFiltersDict)
-                {
-                    var functionName = kvp.Key?.ToString();
-                    if (string.IsNullOrEmpty(functionName)) continue;
-
-                    if (kvp.Value is Dictionary<object, object> filterDict)
-                        metadata.FunctionChatFilters[functionName] = ParseChatMessageFilter(filterDict);
-                }
-            }
-
-            if (yaml.TryGetValue("dependencies", out var dependencies))
-                metadata.Dependencies = ParseDependencies(dependencies);
-
-            if (yaml.TryGetValue("configs", out var configs) && configs is Dictionary<object, object> configDict)
-            {
-                var parsedConfigs = ParseConfigs(configDict);
+                var previousConfigs = metadata.Configs; // metadata may be previousMetadata, so capture before replacing
+                metadata.Configs = ParseConfigs(yaml.Configs);
                 if (previousMetadata != null)
-                {
-                    var preservedValues = new Dictionary<string, object>(); // cache old
-                    foreach (var prev in previousMetadata.Configs)
-                        preservedValues[prev.Key] = prev.Value.Value;
-
-                    metadata.Configs = [with(parsedConfigs)]; // make new
-
-                    foreach (var prev in previousMetadata.Configs) // add any not present in new
-                        if (!metadata.Configs.ContainsKey(prev.Key))
-                            metadata.Configs[prev.Key] = prev.Value;
-
-                    foreach (var kvp in metadata.Configs) // overwrite with cached if they exist
-                        if (preservedValues.TryGetValue(kvp.Key, out var preservedValue))
-                            kvp.Value.Value = preservedValue;
-                }
-                else
-                    metadata.Configs = parsedConfigs;
+                    foreach (var (name, config) in metadata.Configs)
+                        if (previousConfigs.TryGetValue(name, out var previous))
+                            config.Value = previous.Value; // keep the user's value
             }
             else if (previousMetadata != null)
                 // no configs in content = keep whatever was already in metadata
@@ -158,134 +182,36 @@ public partial class MetadataParser
     {
         if (macro == null) return false;
 
-        var metadataDict = new Dictionary<string, object>();
-
-        if (!string.IsNullOrEmpty(macro.Metadata.Author))
-            metadataDict["author"] = macro.Metadata.Author;
-
-        if (!string.IsNullOrEmpty(macro.Metadata.Version))
-            metadataDict["version"] = macro.Metadata.Version;
-
-        if (!string.IsNullOrEmpty(macro.Metadata.Description))
-            metadataDict["description"] = macro.Metadata.Description;
-
-        if (macro.Metadata.TriggerEvents.Any())
-            metadataDict["triggers"] = macro.Metadata.TriggerEvents.Select(t => t.ToString().ToLower()).ToList();
-
-        if (macro.Metadata.PluginDependecies.Any())
-            metadataDict["plugin_dependencies"] = macro.Metadata.PluginDependecies.ToList();
-
-        if (macro.Metadata.PluginsToDisable.Any())
-            metadataDict["plugins_to_disable"] = macro.Metadata.PluginsToDisable.ToList();
-
-        if (macro.Metadata.CraftingLoop)
-            metadataDict["crafting_loop"] = true;
-
-        if (macro.Metadata.CraftLoopCount > 0)
-            metadataDict["craft_loop_count"] = macro.Metadata.CraftLoopCount;
-
-        if (macro.Metadata.AddonEventConfig != null)
+        var metadata = macro.Metadata;
+        var yamlModel = new MetadataYaml
         {
-            metadataDict["addon_event"] = new Dictionary<string, object>
+            Author = NullIfEmpty(metadata.Author),
+            Version = NullIfEmpty(metadata.Version),
+            Description = NullIfEmpty(metadata.Description),
+            Triggers = NullIfEmpty(metadata.TriggerEvents.Select(t => t.ToString().ToLower())),
+            PluginDependencies = NullIfEmpty(metadata.PluginDependecies),
+            PluginsToDisable = NullIfEmpty(metadata.PluginsToDisable),
+            CraftingLoop = metadata.CraftingLoop ? true : null,
+            CraftLoopCount = metadata.CraftLoopCount > 0 ? metadata.CraftLoopCount : null,
+            AddonEvent = metadata.AddonEventConfig is { } addon ? new AddonEventYaml { AddonName = addon.AddonName, EventType = addon.EventType.ToString().ToLower() } : null,
+            ChatMessageFilter = metadata.ChatMessageFilter is { } filter ? ChatFilterYaml.From(filter) : null,
+            FunctionChatFilters = metadata.FunctionChatFilters.Count > 0 ? metadata.FunctionChatFilters.ToDictionary(kvp => kvp.Key, kvp => ChatFilterYaml.From(kvp.Value)) : null,
+            Dependencies = NullIfEmpty(metadata.Dependencies.Select(dep => new DependencyYaml
             {
-                ["addon_name"] = macro.Metadata.AddonEventConfig.AddonName,
-                ["event_type"] = macro.Metadata.AddonEventConfig.EventType.ToString().ToLower()
-            };
-        }
-
-        if (macro.Metadata.ChatMessageFilter != null)
-            metadataDict["chat_message_filter"] = SerializeChatMessageFilter(macro.Metadata.ChatMessageFilter);
-
-        if (macro.Metadata.FunctionChatFilters.Any())
-        {
-            metadataDict["function_chat_filters"] = macro.Metadata.FunctionChatFilters.ToDictionary(
-                kvp => kvp.Key,
-                kvp => SerializeChatMessageFilter(kvp.Value)
-            );
-        }
-
-        if (macro.Metadata.Dependencies.Any())
-        {
-            metadataDict["dependencies"] = macro.Metadata.Dependencies.Select(dep => new Dictionary<string, object>
-            {
-                ["source"] = dep.Source,
-                ["name"] = dep.Name,
-                ["type"] = dep switch
+                Source = dep.Source,
+                Name = dep.Name,
+                Type = dep switch
                 {
                     GitDependency => "git",
                     LocalMacroDependency => "macro",
                     LocalDependency => "file",
                     _ => "unknown"
                 }
-            }).ToList();
-        }
+            })),
+            Configs = metadata.Configs.Count > 0 ? metadata.Configs.ToDictionary(kvp => kvp.Key, kvp => SerializeConfig(kvp.Value)) : null,
+        };
 
-        if (macro.Metadata.Configs.Any())
-        {
-            metadataDict["configs"] = macro.Metadata.Configs.ToDictionary(
-                kvp => kvp.Key,
-                kvp =>
-                {
-                    var isSimpleConfig = string.IsNullOrEmpty(kvp.Value.Description) &&
-                                        string.IsNullOrEmpty(kvp.Value.Section) &&
-                                        kvp.Value.MinValue == null &&
-                                        kvp.Value.MaxValue == null &&
-                                        string.IsNullOrEmpty(kvp.Value.ValidationPattern) &&
-                                        string.IsNullOrEmpty(kvp.Value.ValidationMessage) &&
-                                        !kvp.Value.Choices.Any() &&
-                                        kvp.Value.Type != typeof(List<string>);
-
-                    if (isSimpleConfig)
-                        return kvp.Value.Value;
-
-                    var configDict = new Dictionary<string, object>();
-
-                    if (!string.IsNullOrEmpty(kvp.Value.DefaultValue?.ToString()))
-                        configDict["default"] = kvp.Value.DefaultValue;
-
-                    if (!string.IsNullOrEmpty(kvp.Value.Description))
-                        configDict["description"] = kvp.Value.Description;
-
-                    if (!string.IsNullOrEmpty(kvp.Value.Section))
-                        configDict["section"] = kvp.Value.Section;
-
-                    if (kvp.Value.Type != typeof(string))
-                        configDict["type"] = kvp.Value.TypeName;
-
-                    if (kvp.Value.MinValue != null)
-                        configDict["min"] = kvp.Value.MinValue;
-
-                    if (kvp.Value.MaxValue != null)
-                        configDict["max"] = kvp.Value.MaxValue;
-
-                    if (!string.IsNullOrEmpty(kvp.Value.ValidationPattern))
-                        configDict["validation_pattern"] = kvp.Value.ValidationPattern;
-
-                    if (!string.IsNullOrEmpty(kvp.Value.ValidationMessage))
-                        configDict["validation_message"] = kvp.Value.ValidationMessage;
-
-                    if (kvp.Value.Type == typeof(List<string>))
-                    {
-                        if (kvp.Value.Choices.Any())
-                            configDict["choices"] = kvp.Value.Choices;
-
-                        if (kvp.Value.IsChoice)
-                            configDict["is_choice"] = true;
-                    }
-                    else if (kvp.Value.IsChoice && kvp.Value.Type == typeof(string))
-                    {
-                        if (kvp.Value.Choices.Any())
-                            configDict["choices"] = kvp.Value.Choices;
-
-                        configDict["is_choice"] = true;
-                    }
-
-                    return configDict;
-                }
-            );
-        }
-
-        var yaml = _serializer.Serialize(metadataDict);
+        var yaml = _serializer.Serialize(yamlModel);
         var (startComment, endComment) = GetCommentSyntax(macro.Type);
         var metadataBlock = $"{startComment}\n[[SND Metadata]]\n{yaml}\n[[End Metadata]]\n{endComment}";
 
@@ -315,48 +241,77 @@ public partial class MetadataParser
             _ => ("", "")
         };
 
-    private List<IMacroDependency> ParseDependencies(object dependencies)
+    #region Configs
+    private static object? SerializeConfig(MacroConfigItem config)
     {
-        var result = new List<IMacroDependency>();
+        var isSimpleConfig = string.IsNullOrEmpty(config.Description) &&
+                             string.IsNullOrEmpty(config.Section) &&
+                             config.MinValue == null &&
+                             config.MaxValue == null &&
+                             string.IsNullOrEmpty(config.ValidationPattern) &&
+                             string.IsNullOrEmpty(config.ValidationMessage) &&
+                             config.Choices.Count == 0 &&
+                             config.Type != typeof(List<string>);
+        if (isSimpleConfig)
+            return config.Value;
 
-        if (dependencies is List<object> depList)
+        var configDict = new Dictionary<string, object>();
+
+        if (!string.IsNullOrEmpty(config.DefaultValue?.ToString()))
+            configDict["default"] = config.DefaultValue;
+
+        if (!string.IsNullOrEmpty(config.Description))
+            configDict["description"] = config.Description;
+
+        if (!string.IsNullOrEmpty(config.Section))
+            configDict["section"] = config.Section;
+
+        if (config.Type != typeof(string))
+            configDict["type"] = config.TypeName;
+
+        if (config.MinValue != null)
+            configDict["min"] = config.MinValue;
+
+        if (config.MaxValue != null)
+            configDict["max"] = config.MaxValue;
+
+        if (!string.IsNullOrEmpty(config.ValidationPattern))
+            configDict["validation_pattern"] = config.ValidationPattern;
+
+        if (!string.IsNullOrEmpty(config.ValidationMessage))
+            configDict["validation_message"] = config.ValidationMessage;
+
+        if (config.Type == typeof(List<string>) || (config.IsChoice && config.Type == typeof(string)))
         {
-            foreach (var dep in depList)
-            {
-                if (dep is Dictionary<object, object> depDict)
-                {
-                    var source = depDict.TryGetValue("source", out var s) ? s?.ToString() : string.Empty;
-                    if (!string.IsNullOrEmpty(source))
-                        result.Add(_dependencyFactory.CreateDependency(source));
-                }
-            }
+            if (config.Choices.Count > 0)
+                configDict["choices"] = config.Choices;
+
+            if (config.IsChoice)
+                configDict["is_choice"] = true;
         }
-        return result;
+
+        return configDict;
     }
 
-    private Dictionary<string, MacroConfigItem> ParseConfigs(Dictionary<object, object> configDict)
+    private static Dictionary<string, MacroConfigItem> ParseConfigs(Dictionary<string, object?> configDict)
     {
         var result = new Dictionary<string, MacroConfigItem>();
 
-        foreach (var kvp in configDict)
+        foreach (var (configName, value) in configDict)
         {
-            var configName = kvp.Key.ToString();
             if (string.IsNullOrEmpty(configName)) continue;
 
             var configItem = new MacroConfigItem();
 
-            if (kvp.Value is Dictionary<object, object> configData)
+            if (value is Dictionary<object, object> configData)
             {
                 if (configData.TryGetValue("default", out var defaultValue))
                     configItem.DefaultValue = defaultValue ?? string.Empty;
                 else if (configData.ContainsKey("choices"))
                     configItem.DefaultValue = new List<object>(); // if no default for lists, we want the default value to be a list so the type can be inferred properly
 
-                if (configData.TryGetValue("description", out var description))
-                    configItem.Description = description?.ToString() ?? string.Empty;
-
-                if (configData.TryGetValue("section", out var section))
-                    configItem.Section = section?.ToString() ?? string.Empty;
+                configItem.Description = configData.GetValueOrDefault("description")?.ToString() ?? string.Empty;
+                configItem.Section = configData.GetValueOrDefault("section")?.ToString() ?? string.Empty;
 
                 if (configData.TryGetValue("type", out var type))
                     configItem.TypeName = type?.ToString() ?? "string";
@@ -375,43 +330,26 @@ public partial class MetadataParser
                 if (configData.TryGetValue("validation_message", out var message))
                     configItem.ValidationMessage = message?.ToString();
 
-                if (configData.TryGetValue("choices", out var choices))
-                    if (choices is List<object> choiceList)
-                        configItem.Choices = [.. choiceList.Select(c => c?.ToString() ?? string.Empty).Where(c => !string.IsNullOrEmpty(c))];
+                if (configData.GetValueOrDefault("choices") is List<object> choiceList)
+                    configItem.Choices = [.. choiceList.Select(c => c?.ToString() ?? string.Empty).Where(c => !string.IsNullOrEmpty(c))];
 
-                if (configData.TryGetValue("is_choice", out var isChoiceList))
-                    configItem.IsChoice = isChoiceList?.ToString()?.ToLower() == "true";
+                if (configData.TryGetValue("is_choice", out var isChoice))
+                    configItem.IsChoice = isChoice?.ToString()?.ToLower() == "true";
             }
             else
             {
-                configItem.DefaultValue = kvp.Value ?? string.Empty;
+                configItem.DefaultValue = value ?? string.Empty;
                 configItem.Description = configName;
                 configItem.Type = InferTypeFromValue(configItem.DefaultValue);
             }
 
-            if (configItem.Type == typeof(List<string>))
-            {
-                if (configItem.IsChoice)
-                {
-                    var defaultValue = configItem.DefaultValue?.ToString() ?? string.Empty;
-                    if (configItem.Choices.Contains(defaultValue))
-                        configItem.Value = defaultValue;
-                    else
-                        configItem.Value = configItem.Choices.Any() ? configItem.Choices.First() : string.Empty;
-                }
-                else
-                    configItem.Value = configItem.DefaultValue is List<object> defaultList
-                        ? [.. defaultList.Select(x => x?.ToString() ?? string.Empty)]
-                        : new List<string>();
-            }
-            else if (configItem.IsChoice && configItem.Type == typeof(string))
+            if (configItem.IsChoice && (configItem.Type == typeof(List<string>) || configItem.Type == typeof(string)))
             {
                 var defaultValue = configItem.DefaultValue?.ToString() ?? string.Empty;
-                if (configItem.Choices.Contains(defaultValue))
-                    configItem.Value = defaultValue;
-                else
-                    configItem.Value = configItem.Choices.Any() ? configItem.Choices.First() : string.Empty;
+                configItem.Value = configItem.Choices.Contains(defaultValue) ? defaultValue : configItem.Choices.FirstOrDefault() ?? string.Empty;
             }
+            else if (configItem.Type == typeof(List<string>))
+                configItem.Value = configItem.DefaultValue is List<object> defaultList ? [.. defaultList.Select(x => x?.ToString() ?? string.Empty)] : new List<string>();
             else
                 configItem.Value = configItem.DefaultValue;
 
@@ -426,10 +364,8 @@ public partial class MetadataParser
         if (value == null) return typeof(string);
 
         if (value is bool) return typeof(bool);
-        if (value is int) return typeof(int);
-        if (value is long) return typeof(int);
-        if (value is float) return typeof(float);
-        if (value is double) return typeof(float);
+        if (value is int or long) return typeof(int);
+        if (value is float or double) return typeof(float);
         if (value is List<object> or List<string>) return typeof(List<string>);
 
         if (value is string stringValue) // in case someone does "bool" or whatever
@@ -444,50 +380,5 @@ public partial class MetadataParser
 
         return typeof(string);
     }
-
-    private static ChatMessageFilterConfig ParseChatMessageFilter(Dictionary<object, object> filterDict)
-    {
-        var filter = new ChatMessageFilterConfig();
-
-        if (filterDict.TryGetValue("channels", out var channels))
-        {
-            if (channels is List<object> channelList)
-            {
-                filter.Channels = [];
-                foreach (var channel in channelList)
-                    if (Enum.TryParse<XivChatType>(channel?.ToString(), true, out var chatType))
-                        filter.Channels.Add(chatType);
-            }
-        }
-
-        if (filterDict.TryGetValue("message_contains", out var messageContains))
-            filter.MessageContains = messageContains?.ToString();
-
-        if (filterDict.TryGetValue("sender_contains", out var senderContains))
-            filter.SenderContains = senderContains?.ToString();
-
-        if (filterDict.TryGetValue("message_regex", out var messageRegex))
-            filter.MessageRegex = messageRegex?.ToString();
-
-        return filter;
-    }
-
-    private static Dictionary<string, object> SerializeChatMessageFilter(ChatMessageFilterConfig filter)
-    {
-        var dict = new Dictionary<string, object>();
-
-        if (filter.Channels != null && filter.Channels.Count > 0)
-            dict["channels"] = filter.Channels.Select(c => c.ToString().ToLower()).ToList();
-
-        if (!string.IsNullOrEmpty(filter.MessageContains))
-            dict["message_contains"] = filter.MessageContains;
-
-        if (!string.IsNullOrEmpty(filter.SenderContains))
-            dict["sender_contains"] = filter.SenderContains;
-
-        if (!string.IsNullOrEmpty(filter.MessageRegex))
-            dict["message_regex"] = filter.MessageRegex;
-
-        return dict;
-    }
+    #endregion
 }

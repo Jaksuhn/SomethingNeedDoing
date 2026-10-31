@@ -1,4 +1,4 @@
-﻿using SomethingNeedDoing.Core.Events;
+using SomethingNeedDoing.Core.Events;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,29 +20,7 @@ public interface IMacroEngine : IDisposable
     Task StartMacro(IMacro macro, IMacroInstance instance, CancellationToken token, TriggerEventArgs? triggerEventArgs = null, int loopCount = 0);
 
     /// <summary>
-    /// Event raised when a macro encounters an error.
-    /// </summary>
-    event EventHandler<MacroErrorEventArgs> MacroError;
-
-    /// <summary>
-    /// Event raised when a macro requests control of another macro.
-    /// </summary>
-    event EventHandler<MacroControlEventArgs> MacroControlRequested;
-
-    /// <summary>
-    /// Event raised when a macro step is completed.
-    /// </summary>
-    event EventHandler<MacroStepCompletedEventArgs> MacroStepCompleted;
-
-    /// <summary>
     /// Event raised when a macro execution is requested (for breaking circular dependencies).
     /// </summary>
     event EventHandler<MacroExecutionRequestedEventArgs> MacroExecutionRequested;
-
-    /// <summary>
-    /// Gets a temporary macro by its ID.
-    /// </summary>
-    /// <param name="macroId">The ID of the temporary macro.</param>
-    /// <returns>The temporary macro, or null if not found.</returns>
-    IMacro? GetTemporaryMacro(string macroId);
 }

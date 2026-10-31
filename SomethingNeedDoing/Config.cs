@@ -201,7 +201,24 @@ public class Config : IHostedService
     /// Gets a macro by its ID.
     /// </summary>
     public ConfigMacro? GetMacro(string macroId)
-        => Macros.FirstOrDefault(m => m.Id == macroId);
+    {
+        // ids never change, so an indexed hit is valid as long as the macro is still at that index
+        var macros = Macros;
+        if (_macroIndex.TryGetValue(macroId, out var i) && i < macros.Count && macros[i].Id == macroId)
+            return macros[i];
+
+        // misses fall back to a scan, and the index is only rebuilt when that finds the macro
+        if (macros.FindIndex(m => m.Id == macroId) is not (>= 0 and var found))
+            return null;
+
+        var index = new Dictionary<string, int>(macros.Count);
+        for (i = 0; i < macros.Count; i++)
+            index.TryAdd(macros[i].Id, i);
+        _macroIndex = index;
+        return macros[found];
+    }
+
+    [JsonIgnore] private Dictionary<string, int> _macroIndex = [];
 
     /// <summary>
     /// Gets a macro by its name, optionally in a specific folder.
@@ -214,7 +231,7 @@ public class Config : IHostedService
     /// <summary>
     /// Validates if a macro name is valid for the given folder.
     /// </summary>
-    public bool IsValidMacroName(string name, string folderPath, string? excludeMacroId = null)
+    public bool IsValidMacroName(string name, string? excludeMacroId = null)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;
         return !Macros.Any(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && m.Id != excludeMacroId);
@@ -244,7 +261,7 @@ public class Config : IHostedService
     {
         var name = baseName;
         var counter = 1;
-        while (!IsValidMacroName(name, string.Empty, excludeMacroId))
+        while (!IsValidMacroName(name, excludeMacroId))
         {
             name = $"{baseName} ({counter})";
             counter++;

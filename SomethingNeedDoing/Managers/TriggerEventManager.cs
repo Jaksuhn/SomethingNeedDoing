@@ -1,75 +1,36 @@
+using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Text;
 using SomethingNeedDoing.Core.Events;
 using SomethingNeedDoing.Core.Interfaces;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace SomethingNeedDoing.Managers;
 
 /// <summary>
-/// Represents a function that can be triggered by an event.
+/// A macro, or a function within a macro, that handles a trigger event.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="TriggerFunction"/> class.
-/// </remarks>
-/// <param name="macro">The macro containing the function.</param>
-/// <param name="functionName">The name of the function.</param>
-/// <param name="eventType">The trigger event this function handles.</param>
-/// <param name="chatMessageFilter">Optional chat message filter configuration.</param>
-public class TriggerFunction(IMacro macro, string functionName, TriggerEvent eventType, ChatMessageFilterConfig? chatMessageFilter = null)
+/// <param name="Macro">The macro to start, or containing the function.</param>
+/// <param name="FunctionName">The function to call, or empty for a macro-level trigger.</param>
+/// <param name="EventType">The trigger event handled.</param>
+/// <param name="AddonName">For <see cref="TriggerEvent.OnAddonEvent"/>, the addon to match.</param>
+/// <param name="AddonEventType">For <see cref="TriggerEvent.OnAddonEvent"/>, the addon event to match.</param>
+/// <param name="ChatMessageFilter">For <see cref="TriggerEvent.OnChatMessage"/>, the filter to match.</param>
+public sealed record TriggerFunction(IMacro Macro, string FunctionName, TriggerEvent EventType, string? AddonName = null, AddonEvent? AddonEventType = null, ChatMessageFilterConfig? ChatMessageFilter = null)
 {
-    /// <summary>
-    /// Gets the macro containing this function.
-    /// </summary>
-    public IMacro Macro { get; } = macro;
-
-    /// <summary>
-    /// Gets the name of the function.
-    /// </summary>
-    public string FunctionName { get; } = functionName;
-
-    /// <summary>
-    /// Gets the trigger event this function handles.
-    /// </summary>
-    public TriggerEvent EventType { get; } = eventType;
-
-    /// <summary>
-    /// Gets the addon name for OnAddonEvent triggers.
-    /// </summary>
-    public string? AddonName { get; } = eventType == TriggerEvent.OnAddonEvent && functionName.StartsWith("OnAddonEvent_")
-        ? functionName.Split('_')[1]
-        : null;
-
-    /// <summary>
-    /// Gets the event type for OnAddonEvent triggers.
-    /// </summary>
-    public string? AddonEventType { get; } = eventType == TriggerEvent.OnAddonEvent && functionName.StartsWith("OnAddonEvent_")
-        ? functionName.Split('_')[2]
-        : null;
-
-    /// <summary>
-    /// Gets the chat message filter configuration for OnChatMessage triggers.
-    /// </summary>
-    public ChatMessageFilterConfig? ChatMessageFilter { get; } = chatMessageFilter;
-
-    /// <inheritdoc/>
-    public override bool Equals(object? obj)
-        => obj is TriggerFunction other && Macro.Id == other.Macro.Id && FunctionName == other.FunctionName;
-
-    /// <inheritdoc/>
+    public bool Equals(TriggerFunction? other) => other is not null && Macro.Id == other.Macro.Id && FunctionName == other.FunctionName;
     public override int GetHashCode() => HashCode.Combine(Macro.Id, FunctionName);
 }
 
 /// <summary>
 /// Manages trigger events for macros.
 /// </summary>
-[RegisterSingleton, AutoConstruct]
-public partial class TriggerEventManager : IDisposable
+[RegisterSingleton]
+public class TriggerEventManager : IDisposable
 {
     public Dictionary<TriggerEvent, List<TriggerFunction>> EventHandlers { get; } = [];
 
     /// <summary>
-    /// Event raised when a trigger event occurs.
+    /// Event raised when a macro-level trigger event occurs. The sender is the macro.
     /// </summary>
     public event EventHandler<TriggerEventArgs>? TriggerEventOccurred;
 
@@ -84,72 +45,29 @@ public partial class TriggerEventManager : IDisposable
     /// <param name="macro">The macro to register.</param>
     /// <param name="eventType">The type of event to register for.</param>
     public void RegisterTrigger(IMacro macro, TriggerEvent eventType)
-    {
-        if (!EventHandlers.ContainsKey(eventType))
-            EventHandlers[eventType] = [];
-
-        ChatMessageFilterConfig? chatFilter = null;
-        if (eventType == TriggerEvent.OnChatMessage && macro.Metadata.ChatMessageFilter != null)
-            chatFilter = macro.Metadata.ChatMessageFilter;
-
-        var triggerFunction = new TriggerFunction(macro, string.Empty, eventType, chatFilter);
-        if (!EventHandlers[eventType].Contains(triggerFunction))
-            EventHandlers[eventType].Add(triggerFunction);
-    }
+        => Add(eventType switch
+        {
+            TriggerEvent.OnChatMessage => new TriggerFunction(macro, string.Empty, eventType, ChatMessageFilter: macro.Metadata.ChatMessageFilter),
+            TriggerEvent.OnAddonEvent => new TriggerFunction(macro, string.Empty, eventType, macro.Metadata.AddonEventConfig?.AddonName, macro.Metadata.AddonEventConfig?.EventType),
+            _ => new TriggerFunction(macro, string.Empty, eventType),
+        });
 
     /// <summary>
-    /// Registers a function within a macro to handle a trigger event based on its name.
+    /// Registers a function within a macro to handle the trigger event its name refers to.
     /// </summary>
-    /// <param name="macro">The macro containing the function.</param>
-    /// <param name="functionName">The name of the function to register.</param>
-    public void RegisterFunctionTrigger(IMacro macro, string functionName)
+    public void RegisterFunctionTrigger(IMacro macro, FunctionInfo function)
     {
-        // Check for OnAddonEvent function name pattern
-        if (functionName.StartsWith("OnAddonEvent_"))
-        {
-            var parts = functionName.Split('_');
-            if (parts.Length >= 3) // OnAddonEvent_AddonName_EventType (anything after is ignored)
-            {
-                if (!EventHandlers.ContainsKey(TriggerEvent.OnAddonEvent))
-                    EventHandlers[TriggerEvent.OnAddonEvent] = [];
+        if (function.TriggerEvent is not { } eventType) return;
+        var chatFilter = eventType == TriggerEvent.OnChatMessage ? macro.Metadata.FunctionChatFilters.GetValueOrDefault(function.Name) : null;
+        Add(new TriggerFunction(macro, function.Name, eventType, function.AddonName, function.AddonEvent, chatFilter));
+    }
 
-                var triggerFunction = new TriggerFunction(macro, functionName, TriggerEvent.OnAddonEvent);
-                if (EventHandlers[TriggerEvent.OnAddonEvent].Contains(triggerFunction))
-                {
-                    FrameworkLogger.Debug($"Function trigger already registered for macro {macro.Name} function {functionName} (Addon: {parts[1]}, Event: {parts[2]})");
-                    return;
-                }
-                FrameworkLogger.Debug($"Registering OnAddonEvent trigger for macro {macro.Name} function {functionName} (Addon: {parts[1]}, Event: {parts[2]})");
-                EventHandlers[TriggerEvent.OnAddonEvent].Add(triggerFunction);
-                return;
-            }
-        }
-
-        // Check if the function name starts with any trigger event name
-        foreach (var eventType in Enum.GetValues<TriggerEvent>())
-        {
-            if (eventType == TriggerEvent.None) continue;
-
-            if (functionName.StartsWith(eventType.ToString(), StringComparison.OrdinalIgnoreCase))
-            {
-                if (!EventHandlers.ContainsKey(eventType))
-                    EventHandlers[eventType] = [];
-
-                ChatMessageFilterConfig? chatFilter = null;
-                if (eventType == TriggerEvent.OnChatMessage && macro.Metadata.FunctionChatFilters.TryGetValue(functionName, out var filter))
-                    chatFilter = filter;
-
-                var triggerFunction = new TriggerFunction(macro, functionName, eventType, chatFilter);
-                if (EventHandlers[eventType].Contains(triggerFunction))
-                {
-                    FrameworkLogger.Debug($"Function trigger already registered for macro {macro.Name} function {functionName} event {eventType}");
-                    return;
-                }
-                FrameworkLogger.Debug($"Registering trigger event {eventType} for macro {macro.Name} function {functionName}");
-                EventHandlers[eventType].Add(triggerFunction);
-                return;
-            }
-        }
+    private void Add(TriggerFunction trigger)
+    {
+        var handlers = EventHandlers.TryGetValue(trigger.EventType, out var list) ? list : EventHandlers[trigger.EventType] = [];
+        if (handlers.Contains(trigger)) return;
+        FrameworkLogger.Debug($"Registering trigger event {trigger.EventType} for macro {trigger.Macro.Name} {trigger.FunctionName}");
+        handlers.Add(trigger);
     }
 
     /// <summary>
@@ -164,44 +82,12 @@ public partial class TriggerEventManager : IDisposable
     }
 
     /// <summary>
-    /// Unregisters a function within a macro from handling its trigger event.
+    /// Unregisters all function-level triggers of a macro.
     /// </summary>
-    /// <param name="macro">The macro containing the function.</param>
-    /// <param name="functionName">The name of the function to unregister.</param>
-    public void UnregisterFunctionTrigger(IMacro macro, string functionName)
+    public void UnregisterFunctionTriggers(IMacro macro)
     {
-        // Check for OnAddonEvent function name pattern
-        if (functionName.StartsWith("OnAddonEvent_"))
-        {
-            var parts = functionName.Split('_');
-            if (parts.Length >= 3) // OnAddonEvent_AddonName_EventType (anything after is ignored)
-            {
-                if (EventHandlers.TryGetValue(TriggerEvent.OnAddonEvent, out var value))
-                {
-                    var removed = value.RemoveAll(tf => tf.Macro.Id == macro.Id && tf.FunctionName == functionName);
-                    if (removed > 0)
-                        FrameworkLogger.Debug($"Unregistering OnAddonEvent trigger for macro {macro.Name} function {functionName}");
-                }
-                return;
-            }
-        }
-
-        // Check if the function name starts with any trigger event name
-        foreach (var eventType in Enum.GetValues<TriggerEvent>())
-        {
-            if (eventType == TriggerEvent.None) continue;
-
-            if (functionName.StartsWith(eventType.ToString(), StringComparison.OrdinalIgnoreCase))
-            {
-                if (EventHandlers.TryGetValue(eventType, out var value))
-                {
-                    var removed = value.RemoveAll(tf => tf.Macro.Id == macro.Id && tf.FunctionName == functionName);
-                    if (removed > 0)
-                        FrameworkLogger.Debug($"Unregistering trigger event {eventType} for macro {macro.Name} function {functionName}");
-                }
-                return;
-            }
-        }
+        foreach (var handlers in EventHandlers.Values)
+            handlers.RemoveAll(tf => tf.Macro.Id == macro.Id && !string.IsNullOrEmpty(tf.FunctionName));
     }
 
     /// <summary>
@@ -219,7 +105,7 @@ public partial class TriggerEventManager : IDisposable
     /// </summary>
     /// <param name="eventType">The type of event to raise.</param>
     /// <param name="data">Optional data associated with the event.</param>
-    public async Task RaiseTriggerEvent(TriggerEvent eventType, object? data = null)
+    public void RaiseTriggerEvent(TriggerEvent eventType, object? data = null)
     {
         if (!EventHandlers.TryGetValue(eventType, out var handlers) || handlers.Count == 0)
             return;
@@ -229,40 +115,27 @@ public partial class TriggerEventManager : IDisposable
         {
             try
             {
-                // For OnAddonEvent, check if the addon name and event type match
                 if (eventType == TriggerEvent.OnAddonEvent && data is Dictionary<string, object> addonEventData)
                 {
-                    addonEventData.TryGetValue("AddonName", out var addonNameObj);
-                    addonEventData.TryGetValue("EventType", out var addonEventTypeObj);
-                    var addonName = addonNameObj as string;
-                    var addonEventType = addonEventTypeObj as string;
-
-                    if (addonName != triggerFunction.AddonName || addonEventType != triggerFunction.AddonEventType)
+                    if (addonEventData.GetValueOrDefault("AddonName") as string != triggerFunction.AddonName
+                        || addonEventData.GetValueOrDefault("type") as AddonEvent? != triggerFunction.AddonEventType)
                         continue;
                 }
 
-                // For OnChatMessage, check if the message matches the filter
                 if (eventType == TriggerEvent.OnChatMessage && data is Dictionary<string, object> chatData)
                     if (!MatchesChatMessageFilter(chatData, triggerFunction.ChatMessageFilter))
                         continue;
 
                 if (string.IsNullOrEmpty(triggerFunction.FunctionName))
                 {
-                    // Macro-level trigger: raise the event for the entire macro
                     FrameworkLogger.Verbose($"Raising trigger event {eventType} for macro {triggerFunction.Macro.Name}");
                     TriggerEventOccurred?.Invoke(triggerFunction.Macro, args);
                 }
                 else
                 {
-                    // For function-level triggers, request function execution via event (doing this to avoid circular dependencies)
-                    if (triggerFunction.Macro.Type == MacroType.Lua)
-                    {
-                        FrameworkLogger.Verbose($"Requesting function execution for {triggerFunction.FunctionName} in macro {triggerFunction.Macro.Name}");
-                        FunctionExecutionRequested?.Invoke(this, new FunctionExecutionRequestedEventArgs(triggerFunction.Macro.Id, triggerFunction.FunctionName, args));
-                    }
-                    else
-                        // I could technically support this, but I don't think it's necessary
-                        throw new NotSupportedException($"[{nameof(TriggerEventManager)}] Trigger event handling for {triggerFunction.Macro.Type} macros is not supported.");
+                    // request function execution via event (doing this to avoid circular dependencies)
+                    FrameworkLogger.Verbose($"Requesting function execution for {triggerFunction.FunctionName} in macro {triggerFunction.Macro.Name}");
+                    FunctionExecutionRequested?.Invoke(this, new FunctionExecutionRequestedEventArgs(triggerFunction.Macro.Id, triggerFunction.FunctionName, args));
                 }
             }
             catch (Exception ex)
@@ -283,56 +156,32 @@ public partial class TriggerEventManager : IDisposable
         if (filter == null)
             return true;
 
-        if (filter.Channels != null && filter.Channels.Count > 0)
-        {
-            if (chatData.TryGetValue("type", out var typeObj) && typeObj is XivChatType chatType)
-            {
-                if (!filter.Channels.Contains(chatType))
-                    return false;
-            }
-            else
-                return false;
-        }
+        if (filter.Channels is { Count: > 0 } && !(chatData.GetValueOrDefault("type") is XivChatType chatType && filter.Channels.Contains(chatType)))
+            return false;
 
-        if (!string.IsNullOrEmpty(filter.MessageContains))
-        {
-            if (chatData.TryGetValue("message", out var messageObj) && messageObj is string message)
-            {
-                if (!message.Contains(filter.MessageContains, StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-            else
-                return false;
-        }
+        var message = chatData.GetValueOrDefault("message") as string;
+        var sender = chatData.GetValueOrDefault("sender") as string;
 
-        if (!string.IsNullOrEmpty(filter.SenderContains))
-        {
-            if (chatData.TryGetValue("sender", out var senderObj) && senderObj is string sender)
-            {
-                if (!sender.Contains(filter.SenderContains, StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-            else
-                return false;
-        }
+        if (!string.IsNullOrEmpty(filter.MessageContains) && message?.Contains(filter.MessageContains, StringComparison.OrdinalIgnoreCase) != true)
+            return false;
+
+        if (!string.IsNullOrEmpty(filter.SenderContains) && sender?.Contains(filter.SenderContains, StringComparison.OrdinalIgnoreCase) != true)
+            return false;
 
         if (!string.IsNullOrEmpty(filter.MessageRegex))
         {
-            if (chatData.TryGetValue("message", out var messageObj) && messageObj is string message)
-            {
-                try
-                {
-                    if (!Regex.IsMatch(message, filter.MessageRegex, RegexOptions.IgnoreCase))
-                        return false;
-                }
-                catch (ArgumentException)
-                {
-                    FrameworkLogger.Warning($"Invalid regex pattern in chat message filter: {filter.MessageRegex}");
-                    return false;
-                }
-            }
-            else
+            if (message == null)
                 return false;
+            try
+            {
+                if (!Regex.IsMatch(message, filter.MessageRegex, RegexOptions.IgnoreCase))
+                    return false;
+            }
+            catch (ArgumentException)
+            {
+                FrameworkLogger.Warning($"Invalid regex pattern in chat message filter: {filter.MessageRegex}");
+                return false;
+            }
         }
 
         return true;

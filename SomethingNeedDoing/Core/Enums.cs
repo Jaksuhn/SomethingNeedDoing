@@ -73,29 +73,3 @@ public enum TriggerEvent
     OnDutyCompleted,
     OnEmote,
 }
-
-/// <summary>
-/// Defines the types of control operations that can be performed on a macro.
-/// </summary>
-public enum MacroControlType
-{
-    /// <summary>
-    /// Start the macro.
-    /// </summary>
-    Start,
-
-    /// <summary>
-    /// Pause the macro.
-    /// </summary>
-    Pause,
-
-    /// <summary>
-    /// Resume the macro.
-    /// </summary>
-    Resume,
-
-    /// <summary>
-    /// Stop the macro.
-    /// </summary>
-    Stop
-}

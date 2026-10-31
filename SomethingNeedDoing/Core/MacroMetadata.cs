@@ -45,11 +45,6 @@ public class MacroMetadata : IEquatable<MacroMetadata>
     public DateTime LastModified { get; set; } = DateTime.Now;
 
     /// <summary>
-    /// Gets or sets any additional metadata as a dictionary.
-    /// </summary>
-    public Dictionary<string, string> AdditionalData { get; set; } = [];
-
-    /// <summary>
     /// Gets or sets the macro configuration items.
     /// </summary>
     public Dictionary<string, MacroConfigItem> Configs { get; set; } = [];

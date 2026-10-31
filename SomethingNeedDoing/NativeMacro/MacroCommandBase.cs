@@ -70,7 +70,8 @@ public abstract class MacroCommandBase(string text) : IMacroCommand
     /// </summary>
     protected async Task PerformWait(CancellationToken token)
     {
-        if (WaitDuration > 0)
-            await Task.Delay(WaitDuration, token);
+        var duration = WaitModifier is { MaxWaitDuration: > 0 } random ? Random.Shared.Next(random.WaitDuration, random.MaxWaitDuration + 1) : WaitDuration;
+        if (duration > 0)
+            await Task.Delay(duration, token);
     }
 }

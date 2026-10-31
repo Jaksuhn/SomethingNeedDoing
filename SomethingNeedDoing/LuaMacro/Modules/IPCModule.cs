@@ -1,7 +1,6 @@
 using NLua;
 using SomethingNeedDoing.Core.Interfaces;
 using SomethingNeedDoing.Documentation;
-using System.Linq.Expressions;
 using System.Reflection;
 
 namespace SomethingNeedDoing.LuaMacro.Modules;
@@ -33,291 +32,73 @@ public class IPCModule : LuaModuleBase
 
     public override void Register(Lua lua)
     {
-        RegisterIpcEnums(lua);
+        LuaReflection.RegisterEnums(lua, _ipcInstances.Values.SelectMany(ipc => LuaReflection.GetMembers(ipc.GetType()).Enums).Distinct());
 
         lua.DoString($"{ModuleName} = {{}}");
-
-        RegisterHelperFunctions(lua);
+        lua[$"{ModuleName}.IsInstalled"] = new Func<string, bool>(IsIPCInstalled);
+        lua[$"{ModuleName}.GetAvailablePlugins"] = new Func<string[]>(GetAvailablePlugins);
 
         // Register each IPC class as a submodule
         foreach (var (name, instance) in _ipcInstances)
         {
             lua.DoString($"{ModuleName}.{name} = {{}}");
+            var members = LuaReflection.GetMembers(instance.GetType());
 
-            // Register all fields marked with LuaFunction attribute
-            var fields = instance.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance)
-                .Where(f => f.GetCustomAttribute<LuaFunctionAttribute>() != null);
-
-            foreach (var field in fields)
-            {
-                var attr = field.GetCustomAttribute<LuaFunctionAttribute>();
-                var fieldName = attr?.Name ?? field.Name;
-
+            foreach (var (fieldName, field) in members.Fields)
                 if (field.GetValue(instance) is { } fieldValue)
-                    // Register the field value as a Lua function
                     lua[$"{ModuleName}.{name}.{fieldName}"] = fieldValue;
-            }
 
-            // Register all methods marked with LuaFunction attribute
-            var methods = instance.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                .Where(m => m.GetCustomAttribute<LuaFunctionAttribute>() != null);
-
-            foreach (var method in methods)
-            {
-                var attr = method.GetCustomAttribute<LuaFunctionAttribute>();
-                var methodName = attr?.Name ?? method.Name;
-
-                var delegateType = GetDelegateType(method);
-                var methodDelegate = Delegate.CreateDelegate(delegateType, instance, method);
-                lua[$"{ModuleName}.{name}.{methodName}"] = methodDelegate;
-            }
+            foreach (var (methodName, method) in members.Methods)
+                lua[$"{ModuleName}.{name}.{methodName}"] = LuaReflection.CreateDelegate(instance, method);
         }
     }
 
-    public void RegisterDocumentation(LuaDocumentation docs)
+    public override void RegisterDocumentation(LuaDocumentation docs)
     {
-        var moduleDocs = new List<LuaFunctionDoc>();
-
-        // Register helper functions
-        var isInstalledMethod = GetType().GetMethod("IsIPCInstalled", BindingFlags.NonPublic | BindingFlags.Instance);
-        if (isInstalledMethod != null)
+        var isInstalledParam = ((Func<string, bool>)IsIPCInstalled).Method.GetParameters()[0];
+        var moduleDocs = new List<LuaFunctionDoc>
         {
-            moduleDocs.Add(new LuaFunctionDoc(
-                ModuleName,
-                "IsInstalled",
-                "Checks if an IPC plugin is installed",
-                LuaTypeConverter.GetLuaType(isInstalledMethod.ReturnType),
-                [(isInstalledMethod.GetParameters()[0].Name ?? "name", LuaTypeConverter.GetLuaType(isInstalledMethod.GetParameters()[0].ParameterType), "The name of the plugin to check", isInstalledMethod.GetParameters()[0].HasDefaultValue ? isInstalledMethod.GetParameters()[0].DefaultValue : null)],
-                null,
-                true
-            ));
-        }
+            new(ModuleName, "IsInstalled", "Checks if an IPC plugin is installed", LuaTypeConverter.GetLuaType(typeof(bool)),
+                [(isInstalledParam.Name ?? "name", LuaTypeConverter.GetLuaType(isInstalledParam.ParameterType), "The name of the plugin to check", null)], null, true),
+            new(ModuleName, "GetAvailablePlugins", "Gets all available IPC plugins", LuaTypeConverter.GetLuaType(typeof(string[])), [], null, true),
+        };
 
-        var getAvailablePluginsMethod = GetType().GetMethod("GetAvailablePlugins", BindingFlags.NonPublic | BindingFlags.Instance);
-        if (getAvailablePluginsMethod != null)
-        {
-            moduleDocs.Add(new LuaFunctionDoc(
-                ModuleName,
-                "GetAvailablePlugins",
-                "Gets all available IPC plugins",
-                LuaTypeConverter.GetLuaType(getAvailablePluginsMethod.ReturnType),
-                [],
-                null,
-                true
-            ));
-        }
-
-        // Register each IPC instance's functions
         foreach (var (name, instance) in _ipcInstances)
         {
-            var fields = instance.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance)
-                .Where(f => f.GetCustomAttribute<LuaFunctionAttribute>() != null);
+            var modulePath = $"{ModuleName}.{name}";
 
-            foreach (var field in fields)
+            // fields hold delegates, so document their Invoke signature
+            foreach (var field in instance.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
-                var attr = field.GetCustomAttribute<LuaFunctionAttribute>();
-                if (attr == null) continue;
+                if (field.GetCustomAttribute<LuaFunctionAttribute>() is not { } attr) continue;
 
-                var fieldName = attr.Name ?? field.Name;
-                var fieldType = field.FieldType;
-                var parameters = new List<(string Name, LuaTypeInfo Type, string? Description, object? DefaultValue)>();
-                var returnType = LuaTypeConverter.GetLuaType(typeof(void));
-
-                if (fieldType.IsGenericType)
+                var invoke = typeof(Delegate).IsAssignableFrom(field.FieldType) ? field.FieldType.GetMethod("Invoke") : null;
+                var parameters = (invoke?.GetParameters() ?? []).Select((p, i) =>
                 {
-                    var genericType = fieldType.GetGenericTypeDefinition();
-                    var genericArgs = fieldType.GetGenericArguments();
+                    var paramDesc = attr.ParameterDescriptions?.ElementAtOrDefault(i);
+                    return (paramDesc ?? $"param{i}", LuaTypeConverter.GetLuaType(p.ParameterType), paramDesc, (object?)null);
+                }).ToList();
 
-                    if (genericType == typeof(Func<>))
-                    {
-                        // Func<T> - no parameters, one return type
-                        returnType = LuaTypeConverter.GetLuaType(genericArgs[0]);
-                    }
-                    else if (genericType == typeof(Action))
-                    {
-                        // Action - no parameters, no return type
-                        returnType = LuaTypeConverter.GetLuaType(typeof(void));
-                    }
-                    else if (genericType == typeof(Func<,>))
-                    {
-                        // Func<T, TResult> - one parameter, one return type
-                        var paramDesc = attr.ParameterDescriptions?.FirstOrDefault();
-                        parameters.Add((paramDesc ?? "param0", LuaTypeConverter.GetLuaType(genericArgs[0]), paramDesc, null));
-                        returnType = LuaTypeConverter.GetLuaType(genericArgs[1]);
-                    }
-                    else if (genericType == typeof(Action<>))
-                    {
-                        // Action<T> - one parameter, no return type
-                        var paramDesc = attr.ParameterDescriptions?.FirstOrDefault();
-                        parameters.Add((paramDesc ?? "param0", LuaTypeConverter.GetLuaType(genericArgs[0]), paramDesc, null));
-                        returnType = LuaTypeConverter.GetLuaType(typeof(void));
-                    }
-                    else if (genericType == typeof(Func<,,>))
-                    {
-                        // Func<T1, T2, TResult> - two parameters, one return type
-                        var paramDesc0 = attr.ParameterDescriptions?.ElementAtOrDefault(0);
-                        var paramDesc1 = attr.ParameterDescriptions?.ElementAtOrDefault(1);
-                        parameters.Add((paramDesc0 ?? "param0", LuaTypeConverter.GetLuaType(genericArgs[0]), paramDesc0, null));
-                        parameters.Add((paramDesc1 ?? "param1", LuaTypeConverter.GetLuaType(genericArgs[1]), paramDesc1, null));
-                        returnType = LuaTypeConverter.GetLuaType(genericArgs[2]);
-                    }
-                    else if (genericType == typeof(Action<,>))
-                    {
-                        // Action<T1, T2> - two parameters, no return type
-                        var paramDesc0 = attr.ParameterDescriptions?.ElementAtOrDefault(0);
-                        var paramDesc1 = attr.ParameterDescriptions?.ElementAtOrDefault(1);
-                        parameters.Add((paramDesc0 ?? "param0", LuaTypeConverter.GetLuaType(genericArgs[0]), paramDesc0, null));
-                        parameters.Add((paramDesc1 ?? "param1", LuaTypeConverter.GetLuaType(genericArgs[1]), paramDesc1, null));
-                        returnType = LuaTypeConverter.GetLuaType(typeof(void));
-                    }
-                    else if (genericType == typeof(Func<,,,>))
-                    {
-                        // Func<T1, T2, T3, TResult> - three parameters, one return type
-                        var paramDesc0 = attr.ParameterDescriptions?.ElementAtOrDefault(0);
-                        var paramDesc1 = attr.ParameterDescriptions?.ElementAtOrDefault(1);
-                        var paramDesc2 = attr.ParameterDescriptions?.ElementAtOrDefault(2);
-                        parameters.Add((paramDesc0 ?? "param0", LuaTypeConverter.GetLuaType(genericArgs[0]), paramDesc0, null));
-                        parameters.Add((paramDesc1 ?? "param1", LuaTypeConverter.GetLuaType(genericArgs[1]), paramDesc1, null));
-                        parameters.Add((paramDesc2 ?? "param2", LuaTypeConverter.GetLuaType(genericArgs[2]), paramDesc2, null));
-                        returnType = LuaTypeConverter.GetLuaType(genericArgs[3]);
-                    }
-                    else if (genericType == typeof(Func<,,,,>))
-                    {
-                        // Func<T1, T2, T3, T4, TResult> - four parameters, one return type
-                        var paramDesc0 = attr.ParameterDescriptions?.ElementAtOrDefault(0);
-                        var paramDesc1 = attr.ParameterDescriptions?.ElementAtOrDefault(1);
-                        var paramDesc2 = attr.ParameterDescriptions?.ElementAtOrDefault(2);
-                        var paramDesc3 = attr.ParameterDescriptions?.ElementAtOrDefault(3);
-                        parameters.Add((paramDesc0 ?? "param0", LuaTypeConverter.GetLuaType(genericArgs[0]), paramDesc0, null));
-                        parameters.Add((paramDesc1 ?? "param1", LuaTypeConverter.GetLuaType(genericArgs[1]), paramDesc1, null));
-                        parameters.Add((paramDesc2 ?? "param2", LuaTypeConverter.GetLuaType(genericArgs[2]), paramDesc2, null));
-                        parameters.Add((paramDesc3 ?? "param3", LuaTypeConverter.GetLuaType(genericArgs[3]), paramDesc3, null));
-                        returnType = LuaTypeConverter.GetLuaType(genericArgs[4]);
-                    }
-                    else if (genericType == typeof(Action<,,>))
-                    {
-                        // Action<T1, T2, T3> - three parameters, no return type
-                        var paramDesc0 = attr.ParameterDescriptions?.ElementAtOrDefault(0);
-                        var paramDesc1 = attr.ParameterDescriptions?.ElementAtOrDefault(1);
-                        var paramDesc2 = attr.ParameterDescriptions?.ElementAtOrDefault(2);
-                        parameters.Add((paramDesc0 ?? "param0", LuaTypeConverter.GetLuaType(genericArgs[0]), paramDesc0, null));
-                        parameters.Add((paramDesc1 ?? "param1", LuaTypeConverter.GetLuaType(genericArgs[1]), paramDesc1, null));
-                        parameters.Add((paramDesc2 ?? "param2", LuaTypeConverter.GetLuaType(genericArgs[2]), paramDesc2, null));
-                        returnType = LuaTypeConverter.GetLuaType(typeof(void));
-                    }
-                }
-
-                moduleDocs.Add(new LuaFunctionDoc(
-                    $"{ModuleName}.{name}",
-                    fieldName,
-                    attr.Description,
-                    returnType,
-                    parameters,
-                    attr.Examples,
-                    true
-                ));
+                moduleDocs.Add(new LuaFunctionDoc(modulePath, attr.Name ?? field.Name, attr.Description, LuaTypeConverter.GetLuaType(invoke?.ReturnType ?? typeof(void)), parameters, attr.Examples, true));
             }
 
-            // Register all methods marked with LuaFunction attribute
-            var methods = instance.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance).Where(m => m.GetCustomAttribute<LuaFunctionAttribute>() != null);
-            foreach (var method in methods)
+            foreach (var method in instance.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance))
             {
-                var attr = method.GetCustomAttribute<LuaFunctionAttribute>();
-                if (attr == null) continue;
+                if (method.GetCustomAttribute<LuaFunctionAttribute>() is not { } attr) continue;
 
-                var methodName = attr.Name ?? method.Name;
                 var parameters = method.GetParameters().Select((p, i) =>
                 {
                     var paramDesc = attr.ParameterDescriptions?.ElementAtOrDefault(i);
                     return (paramDesc ?? p.Name ?? $"param{i}", LuaTypeConverter.GetLuaType(p.ParameterType), paramDesc, p.HasDefaultValue ? p.DefaultValue : null);
                 }).ToList();
-                var returnType = LuaTypeConverter.GetLuaType(method.ReturnType);
 
-                moduleDocs.Add(new LuaFunctionDoc(
-                    $"{ModuleName}.{name}",
-                    methodName,
-                    attr.Description,
-                    returnType,
-                    parameters,
-                    attr.Examples,
-                    true
-                ));
+                moduleDocs.Add(new LuaFunctionDoc(modulePath, attr.Name ?? method.Name, attr.Description, LuaTypeConverter.GetLuaType(method.ReturnType), parameters, attr.Examples, true));
             }
         }
 
-        docs.RegisterModule(this, moduleDocs);
+        docs.RegisterModule(ModuleName, moduleDocs);
     }
 
-    private void RegisterIpcEnums(Lua lua)
-    {
-        var enumTypes = new HashSet<Type>();
-        foreach (var instance in _ipcInstances.Values)
-        {
-            var type = instance.GetType();
-            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance).Where(f => f.GetCustomAttribute<LuaFunctionAttribute>() != null))
-                GetEnumsFromType(field.FieldType, enumTypes);
-
-            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance).Where(m => m.GetCustomAttribute<LuaFunctionAttribute>() != null))
-            {
-                GetEnumsFromType(method.ReturnType, enumTypes);
-                foreach (var parameter in method.GetParameters())
-                    GetEnumsFromType(parameter.ParameterType, enumTypes);
-            }
-        }
-
-        foreach (var enumType in enumTypes)
-        {
-            try
-            {
-                var registerEnumMethod = typeof(LuaExtensions).GetMethod("RegisterEnum", BindingFlags.Public | BindingFlags.Static);
-                registerEnumMethod?.MakeGenericMethod(enumType).Invoke(null, [lua]);
-            }
-            catch (Exception ex)
-            {
-                FrameworkLogger.Error($"Failed to register enum {enumType.Name}: {ex.Message}");
-            }
-        }
-    }
-
-    private void GetEnumsFromType(Type? type, HashSet<Type> enumTypes)
-    {
-        if (type == null) return;
-
-        if (Nullable.GetUnderlyingType(type) is { } underlying)
-            type = underlying;
-
-        if (type.IsArray)
-        {
-            GetEnumsFromType(type.GetElementType(), enumTypes);
-            return;
-        }
-
-        if (type.IsEnum)
-        {
-            enumTypes.Add(type);
-            return;
-        }
-
-        if (type.IsGenericType)
-        {
-            foreach (var arg in type.GetGenericArguments())
-                GetEnumsFromType(arg, enumTypes);
-        }
-    }
-
-    private void RegisterHelperFunctions(Lua lua)
-    {
-        lua[$"{ModuleName}.IsInstalled"] = new Func<string, bool>(IsIPCInstalled);
-        lua[$"{ModuleName}.GetAvailablePlugins"] = new Func<string[]>(GetAvailablePlugins);
-    }
-
-    private bool IsIPCInstalled(string name) => GetIPC<IPC>(name)?.IsInstalled ?? false;
+    private bool IsIPCInstalled(string name) => _ipcInstances.TryGetValue(name, out var instance) && instance.IsInstalled;
     private string[] GetAvailablePlugins() => [.. _ipcInstances.Values.Where(ipc => ipc.IsInstalled).Select(ipc => ipc.Name)];
-    private T? GetIPC<T>(string name) where T : IPC => _ipcInstances.TryGetValue(name, out var instance) ? instance as T : null;
-
-    private Type GetDelegateType(MethodInfo method)
-    {
-        var parameters = method.GetParameters().Select(p => p.ParameterType).ToArray();
-        return method.ReturnType == typeof(void) ? Expression.GetActionType(parameters) : Expression.GetFuncType([.. parameters, method.ReturnType]);
-    }
 }

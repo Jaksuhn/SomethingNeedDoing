@@ -18,47 +18,22 @@ public interface IMacroScheduler
     /// Starts execution of a macro.
     /// </summary>
     /// <param name="macro">The macro to execute.</param>
-    Task StartMacro(IMacro macro);
-
-    /// <summary>
-    /// Starts execution of a macro with a specified number of loops.
-    /// </summary>
-    /// <param name="macro">The macro to execute.</param>
-    /// <param name="loopCount">The number of times to loop the macro.</param>
-    Task StartMacro(IMacro macro, int loopCount);
-
-    /// <summary>
-    /// Starts execution of a macro with trigger event arguments.
-    /// </summary>
-    /// <param name="macro">The macro to execute.</param>
+    /// <param name="loopCount">The number of times to loop the macro. Only supported by native macros.</param>
     /// <param name="triggerArgs">Optional trigger event arguments.</param>
-    Task StartMacro(IMacro macro, TriggerEventArgs? triggerArgs);
+    Task StartMacro(IMacro macro, int loopCount = 0, TriggerEventArgs? triggerArgs = null);
 
     /// <summary>
-    /// Starts execution of a macro with trigger event arguments and a specified number of loops.
+    /// Pauses or resumes execution of a macro (and its children if <see cref="Config.PropagateControlsToChildren"/> is set).
     /// </summary>
-    /// <param name="macro">The macro to execute.</param>
-    /// <param name="loopCount">The number of times to loop the macro.</param>
-    /// <param name="triggerArgs">Optional trigger event arguments.</param>
-    Task StartMacro(IMacro macro, int loopCount, TriggerEventArgs? triggerArgs);
-
-    /// <summary>
-    /// Pauses execution of a macro.
-    /// </summary>
-    /// <param name="macroId">The ID of the macro to pause.</param>
-    void PauseMacro(string macroId);
+    /// <param name="macroId">The ID of the macro.</param>
+    /// <param name="paused">True to pause, false to resume.</param>
+    void SetPaused(string macroId, bool paused);
 
     /// <summary>
     /// Sets a macro to pause at the next loop point.
     /// </summary>
     /// <param name="macroId">The ID of the macro to check</param>
     void PauseAtNextLoop(string macroId);
-
-    /// <summary>
-    /// Resumes execution of a paused macro.
-    /// </summary>
-    /// <param name="macroId">The ID of the macro to resume.</param>
-    void ResumeMacro(string macroId);
 
     /// <summary>
     /// Stops execution of a macro.
@@ -72,22 +47,10 @@ public interface IMacroScheduler
     void StopAllMacros();
 
     /// <summary>
-    /// Checks if the macro should pause at the current loop point.
-    /// </summary>
-    /// <param name="macroId">The ID of the macro to check.</param>
-    void CheckLoopPause(string macroId);
-
-    /// <summary>
     /// Sets a macro to stop at the next loop point.
     /// </summary>
     /// <param name="macroId">The ID of the macro to check</param>
     void StopAtNextLoop(string macroId);
-
-    /// <summary>
-    /// Checks if the macro should stop at the current loop point.
-    /// </summary>
-    /// <param name="macroId">The ID of the macro to check.</param>
-    void CheckLoopStop(string macroId);
 
     /// <summary>
     /// Gets all currently running macros.
@@ -115,21 +78,6 @@ public interface IMacroScheduler
     /// <param name="macro">The macro to unsubscribe.</param>
     /// <param name="triggerEvent">The trigger event to unsubscribe from.</param>
     void UnsubscribeFromTriggerEvent(IMacro macro, TriggerEvent triggerEvent);
-
-    /// <summary>
-    /// Gets the engine currently executing a macro.
-    /// </summary>
-    /// <param name="macroId">The ID of the macro.</param>
-    /// <returns>The engine, or null if not found.</returns>
-    IMacroEngine? GetEngineForMacro(string macroId);
-
-    /// <summary>
-    /// Invalidates cached function names for a macro when its content changes.
-    /// This should be called when a macro's content is modified to ensure
-    /// function triggers are properly updated.
-    /// </summary>
-    /// <param name="macroId">The ID of the macro to invalidate cache for.</param>
-    void InvalidateFunctionCache(string macroId);
 
     /// <summary>
     /// Re-parses metadata from <see cref="IMacro.Content"/> into <see cref="IMacro.Metadata"/> and

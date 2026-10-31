@@ -19,11 +19,14 @@ public static class LuaExtensions
     /// <summary>
     /// Registers a class as a dynamically accessible object. Must be called after <see cref="Lua.LoadCLRPackage"/>
     /// </summary>
-    public static void RegisterClass<T>(this Lua lua)
+    public static void RegisterClass<T>(this Lua lua) => lua.RegisterClass(typeof(T));
+
+    /// <inheritdoc cref="RegisterClass{T}(Lua)"/>
+    public static void RegisterClass(this Lua lua, Type type)
     {
-        var assembly = typeof(T).Assembly.GetName().Name ?? throw new ArgumentException($"Assembly name for type {typeof(T).FullName} is null.");
+        var assembly = type.Assembly.GetName().Name ?? throw new ArgumentException($"Assembly name for type {type.FullName} is null.");
         lua.LoadAssembly(assembly);
-        lua.DoString(@$"{typeof(T).Name} = luanet.import_type('{typeof(T).FullName}')()");
+        lua.DoString(@$"{type.Name} = luanet.import_type('{type.FullName}')()");
     }
 
     /// <summary>

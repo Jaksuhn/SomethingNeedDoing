@@ -14,11 +14,6 @@ public class NativeEngine : IEngine
     /// </summary>
     public event EventHandler<MacroExecutionRequestedEventArgs>? MacroExecutionRequested;
 
-    /// <summary>
-    /// Event raised when loop control is requested.
-    /// </summary>
-    public event EventHandler<LoopControlEventArgs>? LoopControlRequested;
-
     public string Name => "Native";
 
     public async Task ExecuteAsync(string content, CancellationToken cancellationToken = default)

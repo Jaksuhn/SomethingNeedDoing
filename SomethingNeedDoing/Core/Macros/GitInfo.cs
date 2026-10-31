@@ -13,16 +13,6 @@ public class GitInfo
     public string RepositoryUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the owner of the repository.
-    /// </summary>
-    public string Owner { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the name of the repository.
-    /// </summary>
-    public string Repo { get; set; } = string.Empty;
-
-    /// <summary>
     /// Gets or sets the Git branch name.
     /// </summary>
     public string Branch { get; set; } = "main";
@@ -43,16 +33,6 @@ public class GitInfo
     public bool AutoUpdate { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets the current version of the macro.
-    /// </summary>
-    public string CurrentVersion { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the latest available version of the macro.
-    /// </summary>
-    public string LatestVersion { get; set; } = string.Empty;
-
-    /// <summary>
     /// Gets or sets whether there is an update available.
     /// </summary>
     public bool HasUpdate { get; set; }
@@ -63,9 +43,15 @@ public class GitInfo
     public DateTime LastUpdateCheck { get; set; }
 
     /// <summary>
-    /// Gets or sets the version history of this macro.
+    /// Resolves the repository, branch and file path into a <see cref="GitHubRef"/>.
     /// </summary>
-    public List<GitCommitInfo> VersionHistory { get; set; } = [];
+    public bool TryGetRef(out GitHubRef file)
+    {
+        if (!GitHubRef.TryParse(RepositoryUrl, out file))
+            return false;
+        file = file with { Branch = Branch, Path = FilePath };
+        return true;
+    }
 
     /// <summary>
     /// Returns a string representation of the Git information.
@@ -74,14 +60,11 @@ public class GitInfo
     {
         var parts = new List<string>();
 
-        if (!string.IsNullOrEmpty(CurrentVersion))
-            parts.Add($"v{CurrentVersion}");
-
-        if (!string.IsNullOrEmpty(CommitHash))
+        if (CommitHash.Length >= 7)
             parts.Add($"({CommitHash[..7]})");
 
-        if (!string.IsNullOrEmpty(Owner) && !string.IsNullOrEmpty(Repo))
-            parts.Add($"{Owner}/{Repo}");
+        if (GitHubRef.TryParse(RepositoryUrl, out var repo))
+            parts.Add($"{repo.Owner}/{repo.Repo}");
 
         return string.Join(" | ", parts);
     }

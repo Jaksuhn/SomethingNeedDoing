@@ -120,12 +120,12 @@ public class StatusWindow : Window
         if (macro.State == MacroState.Paused)
         {
             if (ImGuiUtils.IconButton(FontAwesomeIcon.Play, "Resume"))
-                _scheduler.ResumeMacro(macro.Id);
+                _scheduler.SetPaused(macro.Id, false);
         }
         else
         {
             if (ImGuiUtils.IconButton(FontAwesomeIcon.Pause, "Pause"))
-                _scheduler.PauseMacro(macro.Id);
+                _scheduler.SetPaused(macro.Id, true);
         }
 
         ImGui.SameLine();

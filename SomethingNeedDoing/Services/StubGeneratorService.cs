@@ -14,7 +14,38 @@ public partial class StubGeneratorService : IHostedService
 {
     private readonly LuaDocumentation _luaDocs;
 
+    private static string StubsDirectory => Path.Combine(Svc.PluginInterface.ConfigDirectory.FullName, "stubs");
+    private static string VersionFile => Path.Combine(StubsDirectory, ".version");
+
+    /// <summary>
+    /// Identifies the build that generated the stubs, so they are only regenerated when the plugin changes.
+    /// </summary>
+    private static string BuildId => typeof(StubGeneratorService).Assembly.ManifestModule.ModuleVersionId.ToString();
+
     public Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (File.Exists(VersionFile) && File.ReadAllText(VersionFile) == BuildId)
+        {
+            FrameworkLogger.Debug("Stubs are up to date");
+            return Task.CompletedTask;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                Generate();
+                File.WriteAllText(VersionFile, BuildId);
+            }
+            catch (Exception ex)
+            {
+                FrameworkLogger.Error(ex, "Failed to generate stubs");
+            }
+        }, cancellationToken);
+        return Task.CompletedTask;
+    }
+
+    private void Generate()
     {
         CleanUp();
 
@@ -63,7 +94,6 @@ public partial class StubGeneratorService : IHostedService
 
         FrameworkLogger.Debug("Adding Svc stubs");
         new ComplexTypeStubGenerator(typeof(Svc)).GetStubFile().Write();
-        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

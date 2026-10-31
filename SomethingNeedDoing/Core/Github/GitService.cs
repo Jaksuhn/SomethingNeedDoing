@@ -9,8 +9,9 @@ namespace SomethingNeedDoing.Core.Github;
 /// Implementation of the Git service using the GitHub API.
 /// </summary>
 [RegisterSingleton<IGitService>, AutoConstruct]
-public partial class GitService : IGitService
+public partial class GitService : IGitService, IDisposable
 {
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private readonly HttpClient _httpClient = new()
     {
         DefaultRequestHeaders =
@@ -18,71 +19,28 @@ public partial class GitService : IGitService
             { "User-Agent", "SomethingNeedDoing" }
         }
     };
-    private const string GitHubApiBaseUrl = "https://api.github.com";
 
     /// <inheritdoc/>
     public async Task<string> GetFileContentAsync(string repositoryUrl, string branch, string path)
     {
-        var apiUrl = GetGitHubApiUrl(repositoryUrl, branch, path);
-
-        var response = await _httpClient.GetAsync(apiUrl);
+        var response = await _httpClient.GetAsync(GetRef(repositoryUrl, branch, path).ToApiContentsUrl());
         response.EnsureSuccessStatusCode();
 
         var content = await response.Content.ReadAsStringAsync();
-        FrameworkLogger.Debug($"Raw response length: {content.Length}");
-
-        var fileInfo = JsonSerializer.Deserialize<GitHubFileInfo>(content);
-
+        var fileInfo = JsonSerializer.Deserialize<GitHubFileInfo>(content, JsonOptions);
         if (fileInfo == null)
         {
             FrameworkLogger.Error($"Failed to deserialize GitHub API response");
             return string.Empty;
         }
 
-        FrameworkLogger.Debug($"Encoding: '{fileInfo.Encoding}', Content length: {fileInfo.Content?.Length ?? 0}");
-
-        // If the automatic deserialization didn't work, try manual JSON parsing
-        if (string.IsNullOrEmpty(fileInfo.Encoding) && string.IsNullOrEmpty(fileInfo.Content))
-        {
-            FrameworkLogger.Debug("Automatic deserialization failed, trying manual JSON parsing");
-            try
-            {
-                using var jsonDoc = JsonDocument.Parse(content);
-                var root = jsonDoc.RootElement;
-
-                if (root.TryGetProperty("encoding", out var encodingElement) &&
-                    root.TryGetProperty("content", out var contentElement))
-                {
-                    var encoding = encodingElement.GetString();
-                    var jsonContent = contentElement.GetString();
-
-                    FrameworkLogger.Debug($"Manual parsing - Encoding: '{encoding}', Content length: {jsonContent?.Length ?? 0}");
-
-                    if (encoding == "base64" && !string.IsNullOrEmpty(jsonContent))
-                    {
-                        var decodedContent = Convert.FromBase64String(jsonContent);
-                        var result = System.Text.Encoding.UTF8.GetString(decodedContent);
-                        FrameworkLogger.Debug($"Manual parsing - Decoded content length: {result.Length}");
-                        return result;
-                    }
-                }
-                else
-                    FrameworkLogger.Error($"Manual parsing failed - 'encoding' or 'content' properties not found in JSON");
-            }
-            catch (Exception ex)
-            {
-                FrameworkLogger.Error($"Manual JSON parsing failed: {ex.Message}");
-            }
-        }
+        FrameworkLogger.Debug($"Encoding: '{fileInfo.Encoding}', Content length: {fileInfo.Content.Length}");
 
         if (fileInfo.Encoding == "base64" && !string.IsNullOrEmpty(fileInfo.Content))
         {
             try
             {
-                var decodedContent = Convert.FromBase64String(fileInfo.Content);
-                var result = System.Text.Encoding.UTF8.GetString(decodedContent);
-                FrameworkLogger.Debug($"Decoded content length: {result.Length}");
-                return result;
+                return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(fileInfo.Content));
             }
             catch (Exception ex)
             {
@@ -92,7 +50,7 @@ public partial class GitService : IGitService
         }
 
         FrameworkLogger.Warning($"Unknown encoding: '{fileInfo.Encoding}'");
-        return fileInfo.Content ?? string.Empty;
+        return fileInfo.Content;
     }
 
     /// <inheritdoc/>
@@ -100,8 +58,7 @@ public partial class GitService : IGitService
     {
         try
         {
-            var apiUrl = GetGitHubApiUrl(repositoryUrl, branch, path);
-            var response = await _httpClient.GetAsync(apiUrl);
+            var response = await _httpClient.GetAsync(GetRef(repositoryUrl, branch, path).ToApiContentsUrl());
             return response.IsSuccessStatusCode;
         }
         catch
@@ -110,16 +67,50 @@ public partial class GitService : IGitService
         }
     }
 
-    private static string GetGitHubApiUrl(string repositoryUrl, string branch, string path)
+    /// <inheritdoc/>
+    public async Task<List<GitCommit>> GetCommitsAsync(GitHubRef file, int? perPage = null)
     {
-        // Convert repository URL to GitHub API URL
-        var uri = new Uri(repositoryUrl);
-        var pathParts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var owner = pathParts[0];
-        var repo = pathParts[1].Replace(".git", "");
+        var url = file.ToApiCommitsUrl(perPage);
+        FrameworkLogger.Debug($"Requesting: {url}");
 
-        return $"{GitHubApiBaseUrl}/repos/{owner}/{repo}/contents/{path}?ref={branch}";
+        var response = await _httpClient.GetAsync(url);
+        var content = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            FrameworkLogger.Error($"Failed to get commits from [{url}]: {response.StatusCode} - {content}");
+            throw new Exception($"Failed to get commits: {response.StatusCode}");
+        }
+
+        var commits = JsonSerializer.Deserialize<List<JsonElement>>(content) ?? [];
+        return [.. commits.Select(c => new GitCommit(
+            c.GetProperty("sha").GetString() ?? string.Empty,
+            c.GetProperty("commit").GetProperty("message").GetString() ?? string.Empty,
+            c.TryGetProperty("author", out var author) && author.ValueKind == JsonValueKind.Object ? author.GetProperty("login").GetString() ?? string.Empty : string.Empty,
+            c.GetProperty("commit").GetProperty("author").GetProperty("date").GetDateTime(),
+            c.GetProperty("html_url").GetString() ?? string.Empty))];
     }
+
+    /// <inheritdoc/>
+    public async Task<string> DownloadAsync(string url)
+    {
+        FrameworkLogger.Debug($"Downloading file from: {url}");
+        var response = await _httpClient.GetAsync(url);
+        var content = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            FrameworkLogger.Error($"Failed to download file: {response.StatusCode} - {content} from url [{url}]");
+            throw new Exception($"Failed to download file: {response.StatusCode}");
+        }
+        return content;
+    }
+
+    private static GitHubRef GetRef(string repositoryUrl, string branch, string path)
+        => GitHubRef.TryParse(repositoryUrl, out var repo)
+            ? repo with { Branch = branch, Path = path }
+            : throw new ArgumentException($"Invalid GitHub repository URL: {repositoryUrl}");
+
+    /// <inheritdoc/>
+    public void Dispose() => _httpClient.Dispose();
 
     private class GitHubFileInfo
     {
