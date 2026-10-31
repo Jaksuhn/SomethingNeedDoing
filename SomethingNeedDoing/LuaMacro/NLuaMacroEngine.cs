@@ -136,7 +136,7 @@ public partial class NLuaMacroEngine : IMacroEngine
                         try
                         {
                             // Wait if paused
-                            instance.PauseEvent.Wait(token);
+                            await MacroPause.WaitAsync(instance.PauseEvent, token);
 
                             if (macro.LuaGenerator == null)
                                 break;
