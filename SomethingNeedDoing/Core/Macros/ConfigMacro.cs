@@ -26,6 +26,12 @@ public class ConfigMacro : MacroBase
     public string FolderPath { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the macro's position within its folder. Existing configurations
+    /// default to zero and retain their current list order until the first reorder.
+    /// </summary>
+    public int? SortOrder { get; set; }
+
+    /// <summary>
     /// Gets or sets the Git repository information for this macro, if it is sourced from Git.
     /// </summary>
     public GitInfo GitInfo { get; set; } = new();

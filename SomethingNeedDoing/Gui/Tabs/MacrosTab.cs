@@ -11,6 +11,13 @@ namespace SomethingNeedDoing.Gui.Tabs;
 
 public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMacroManager gitManager)
 {
+    private const string MacroDragPayload = "SND_MACRO_MOVE";
+    private const string FolderDragPayload = "SND_FOLDER_MOVE";
+    private static readonly byte[] DragPayloadMarker = [1];
+    private string _draggedMacroId = string.Empty;
+    private string _draggedFolderPath = string.Empty;
+    private bool _reportedNullMacroEntries;
+
     private static class UiConstants
     {
         public const float DefaultLeftPanelWidth = 250f;
@@ -121,23 +128,53 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
     {
         try
         {
-            var folders = C.GetFolderPaths()
-                .Where(f => !string.IsNullOrEmpty(f))
-                .OrderBy(f => f)
-                .ToList();
+            if (C.Macros is null)
+            {
+                FrameworkLogger.Error("Config.Macros is null; folder data was left untouched and cannot be displayed");
+                ImGui.TextColored(ImGuiColors.DalamudRed, "Macro configuration is unavailable; see the plugin log");
+                return;
+            }
+
+            if (!_reportedNullMacroEntries && C.Macros.Any(macro => macro is null))
+            {
+                FrameworkLogger.Warning("Config.Macros contains null entries; those entries are skipped for display and were not removed");
+                _reportedNullMacroEntries = true;
+            }
+
+            var folders = C.GetFolderPaths().ToList();
 
             var rootMacros = C.GetMacrosInFolder(string.Empty).ToList();
             if (rootMacros.Count != 0)
             {
                 foreach (var macro in rootMacros)
-                    DrawMacroTreeNode(macro, false);
+                {
+                    try
+                    {
+                        DrawMacroTreeNode(macro, false, string.Empty);
+                    }
+                    catch (Exception ex)
+                    {
+                        FrameworkLogger.Error(ex, $"Failed to draw root macro '{macro.Id}'");
+                        ImGui.TextColored(ImGuiColors.DalamudRed, $"Macro '{macro.Name}' could not be displayed");
+                    }
+                }
 
                 if (folders.Count != 0)
                     ImGui.Separator();
             }
 
-            foreach (var folderPath in folders)
-                DrawFolderNode(folderPath);
+            for (var i = 0; i < folders.Count; i++)
+            {
+                try
+                {
+                    DrawFolderNode(folders[i], i);
+                }
+                catch (Exception ex)
+                {
+                    FrameworkLogger.Error(ex, $"Failed to draw folder '{folders[i]}' at index {i}");
+                    ImGui.TextColored(ImGuiColors.DalamudRed, $"Folder '{folders[i]}' could not be displayed");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -146,7 +183,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
         }
     }
 
-    private void DrawFolderNode(string folderPath)
+    private void DrawFolderNode(string folderPath, int folderIndex)
     {
         var isSelected = _state.SelectedFolderId == folderPath;
         var folderCount = C.GetMacroCount(folderPath);
@@ -160,6 +197,8 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
         ImGui.SameLine();
 
         using var tree = ImRaii.TreeNode($"{folderPath} ({folderCount})##folder_{folderPath}", flags);
+        HandleFolderDragSource(folderPath);
+        HandleFolderDropTarget(folderPath, folderIndex);
         if (tree)
         {
             if (ImGui.IsItemClicked())
@@ -197,7 +236,17 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             }
 
             foreach (var macro in macros)
-                DrawMacroTreeNode(macro, false);
+            {
+                try
+                {
+                    DrawMacroTreeNode(macro, false, folderPath);
+                }
+                catch (Exception ex)
+                {
+                    FrameworkLogger.Error(ex, $"Failed to draw macro '{macro.Id}' in folder '{folderPath}'");
+                    ImGui.TextColored(ImGuiColors.DalamudRed, $"Macro '{macro.Name}' could not be displayed");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -271,7 +320,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             ImGui.TextColored(ImGuiColors.DalamudGrey, "No matching folders or macros");
     }
 
-    private void DrawMacroTreeNode(ConfigMacro macro, bool showFolder)
+    private void DrawMacroTreeNode(ConfigMacro macro, bool showFolder, string? containingFolder = null)
     {
         var icon = macro.IsGitMacro ? FontAwesomeHelper.IconGitMacro :
             macro.Type == MacroType.Lua ? FontAwesomeHelper.IconLuaMacro : FontAwesomeHelper.IconNativeMacro;
@@ -291,7 +340,100 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
                 _state.SelectedFolderId = macro.FolderPath;
         }
 
+        if (!showFolder && containingFolder is not null)
+            HandleMacroDragDrop(macro, containingFolder);
+
         HandleMacroContextMenu(macro);
+    }
+
+    private void HandleMacroDragDrop(ConfigMacro macro, string folderPath)
+    {
+        if (ImGui.BeginDragDropSource())
+        {
+            _draggedMacroId = macro.Id;
+            ImGui.SetDragDropPayload(MacroDragPayload, DragPayloadMarker);
+            ImGui.Text($"Move {macro.Name}");
+            ImGui.EndDragDropSource();
+        }
+
+        if (!ImGui.BeginDragDropTarget())
+            return;
+
+        var payload = ImGui.AcceptDragDropPayload(MacroDragPayload);
+        var rectMin = ImGui.GetItemRectMin();
+        var rectMax = ImGui.GetItemRectMax();
+        var before = ImGui.GetIO().MousePos.Y < (rectMin.Y + rectMax.Y) * 0.5f;
+        DrawDropIndicator(rectMin, rectMax, before);
+
+        if (!payload.IsNull && payload.DataSize > 0 && ImGui.IsMouseReleased(ImGuiMouseButton.Left) && !string.IsNullOrEmpty(_draggedMacroId) && _draggedMacroId != macro.Id)
+        {
+            var macros = C.GetMacrosInFolder(folderPath).ToList();
+            var targetIndex = macros.FindIndex(m => m.Id == macro.Id);
+            if (targetIndex >= 0)
+            {
+                var insertAt = targetIndex + (before ? 0 : 1);
+                var sourceFolder = C.GetMacro(_draggedMacroId)?.FolderPath;
+                if (C.MoveMacro(_draggedMacroId, folderPath, insertAt))
+                {
+                    if (_state.SelectedFolderId == sourceFolder)
+                        _state.SelectedFolderId = folderPath;
+                    _state.ExpandedFolders.Add(folderPath);
+                }
+            }
+            _draggedMacroId = string.Empty;
+        }
+
+        ImGui.EndDragDropTarget();
+    }
+
+    private void HandleFolderDragSource(string folderPath)
+    {
+        if (!ImGui.BeginDragDropSource())
+            return;
+
+        _draggedFolderPath = folderPath;
+        ImGui.SetDragDropPayload(FolderDragPayload, DragPayloadMarker);
+        ImGui.Text($"Move folder {folderPath}");
+        ImGui.EndDragDropSource();
+    }
+
+    private void HandleFolderDropTarget(string folderPath, int folderIndex)
+    {
+        if (!ImGui.BeginDragDropTarget())
+            return;
+
+        var macroPayload = ImGui.AcceptDragDropPayload(MacroDragPayload);
+        if (!macroPayload.IsNull && macroPayload.DataSize > 0 && ImGui.IsMouseReleased(ImGuiMouseButton.Left) && !string.IsNullOrEmpty(_draggedMacroId))
+        {
+            var sourceFolder = C.GetMacro(_draggedMacroId)?.FolderPath;
+            C.MoveMacro(_draggedMacroId, folderPath, -1);
+            if (_state.SelectedFolderId == sourceFolder)
+                _state.SelectedFolderId = folderPath;
+            _state.ExpandedFolders.Add(folderPath);
+            _draggedMacroId = string.Empty;
+        }
+
+        var folderPayload = ImGui.AcceptDragDropPayload(FolderDragPayload);
+        var rectMin = ImGui.GetItemRectMin();
+        var rectMax = ImGui.GetItemRectMax();
+        var before = ImGui.GetIO().MousePos.Y < (rectMin.Y + rectMax.Y) * 0.5f;
+        DrawDropIndicator(rectMin, rectMax, before);
+        if (!folderPayload.IsNull && folderPayload.DataSize > 0 && ImGui.IsMouseReleased(ImGuiMouseButton.Left) && !string.IsNullOrEmpty(_draggedFolderPath))
+        {
+            var source = C.GetFolderPaths().ToList().IndexOf(_draggedFolderPath);
+            var target = folderIndex + (before ? 0 : 1);
+            if (source >= 0)
+                C.MoveFolder(_draggedFolderPath, target);
+            _draggedFolderPath = string.Empty;
+        }
+
+        ImGui.EndDragDropTarget();
+    }
+
+    private static void DrawDropIndicator(Vector2 min, Vector2 max, bool before)
+    {
+        var y = before ? min.Y + 1 : max.Y - 1;
+        ImGui.GetWindowDrawList().AddLine(new(min.X, y), new(max.X, y), ImGui.GetColorU32(ImGuiCol.DragDropTarget), 2f);
     }
 
     private void HandleMacroContextMenu(ConfigMacro macro)
@@ -407,8 +549,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             var oldFolder = configMacro.FolderPath;
             if (oldFolder == folderPath) return;
 
-            configMacro.FolderPath = folderPath;
-            C.Save();
+            C.MoveMacro(macroId, folderPath, -1);
 
             if (_state.SelectedFolderId == oldFolder)
                 _state.SelectedFolderId = folderPath;
@@ -419,11 +560,19 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
 
     private void DeleteFolder(string folderPath)
     {
+        var rootMacros = C.GetMacrosInFolder(string.Empty).ToList();
         foreach (var macro in C.GetMacrosInFolder(folderPath).ToList())
         {
             if (macro is ConfigMacro configMacro)
+            {
                 configMacro.FolderPath = string.Empty;
+                rootMacros.Add(configMacro);
+            }
         }
+
+        for (var i = 0; i < rootMacros.Count; i++)
+            rootMacros[i].SortOrder = i;
+        C.FolderOrder?.RemoveAll(folder => folder == folderPath);
 
         C.Save();
 

@@ -183,17 +183,93 @@ public class Config : IHostedService
 
     public List<ConfigMacro> Macros { get; set; } = [];
 
+    /// <summary>Explicit display order for the flat folder list. Missing entries use the legacy alphabetical order.</summary>
+    public List<string> FolderOrder { get; set; } = [];
+
     public void Save() => EzConfig.Save();
 
     /// <summary>
     /// Gets all macros in a specific folder.
     /// </summary>
-    public IEnumerable<ConfigMacro> GetMacrosInFolder(string folderPath) => Macros.Where(m => m.FolderPath == folderPath);
+    public IEnumerable<ConfigMacro> GetMacrosInFolder(string folderPath) => (Macros ?? [])
+        .Select((macro, index) => (macro, index))
+        .Where(entry => entry.macro is not null && entry.macro.FolderPath == folderPath)
+        .OrderBy(entry => entry.macro.SortOrder ?? int.MaxValue)
+        .ThenBy(entry => entry.index)
+        .Select(entry => entry.macro);
 
     /// <summary>
     /// Gets all folder paths.
     /// </summary>
-    public IEnumerable<string> GetFolderPaths() => Macros.Select(m => m.FolderPath).Distinct();
+    public IEnumerable<string> GetFolderPaths()
+    {
+        var folders = (Macros ?? [])
+            .Where(macro => macro is not null)
+            .Select(macro => macro.FolderPath)
+            .Where(folder => !string.IsNullOrEmpty(folder))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        // Config files from older versions may omit this list, explicitly store null,
+        // or contain duplicate entries. Keep the first valid position without mutating it.
+        var order = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (FolderOrder is not null)
+            for (var i = 0; i < FolderOrder.Count; i++)
+                if (!string.IsNullOrEmpty(FolderOrder[i]))
+                    order.TryAdd(FolderOrder[i], i);
+
+        return folders.OrderBy(f => order.TryGetValue(f, out var index) ? index : int.MaxValue)
+            .ThenBy(f => f, StringComparer.Ordinal);
+    }
+
+    /// <summary>Moves one macro to a folder and position without changing its content or settings.</summary>
+    public bool MoveMacro(string macroId, string destinationFolder, int destinationIndex)
+    {
+        var macro = GetMacro(macroId);
+        if (macro is null || macro.FolderPath == destinationFolder && destinationIndex < 0)
+            return false;
+
+        var sourceFolder = macro.FolderPath;
+        var source = GetMacrosInFolder(sourceFolder).ToList();
+        var destination = sourceFolder == destinationFolder ? source : GetMacrosInFolder(destinationFolder).ToList();
+        var sourceIndex = source.IndexOf(macro);
+        if (sourceFolder == destinationFolder && sourceIndex >= 0 && sourceIndex < destinationIndex)
+            destinationIndex--;
+        if (sourceFolder == destinationFolder && destinationIndex >= 0 && sourceIndex == destinationIndex)
+            return false;
+
+        macro.FolderPath = destinationFolder;
+        destination.Remove(macro);
+        var insertAt = destinationIndex < 0 ? destination.Count : Math.Clamp(destinationIndex, 0, destination.Count);
+        destination.Insert(insertAt, macro);
+        for (var i = 0; i < destination.Count; i++)
+            destination[i].SortOrder = i;
+        if (sourceFolder != destinationFolder)
+            for (var i = 0; i < source.Count; i++)
+                source[i].SortOrder = i;
+
+        Save();
+        return true;
+    }
+
+    /// <summary>Moves a folder within the flat folder list.</summary>
+    public bool MoveFolder(string folderPath, int destinationIndex)
+    {
+        var folders = GetFolderPaths().ToList();
+        var sourceIndex = folders.IndexOf(folderPath);
+        if (sourceIndex < 0 || destinationIndex < 0 || destinationIndex > folders.Count)
+            return false;
+
+        folders.RemoveAt(sourceIndex);
+        if (sourceIndex < destinationIndex)
+            destinationIndex--;
+        if (sourceIndex == destinationIndex)
+            return false;
+        folders.Insert(Math.Clamp(destinationIndex, 0, folders.Count), folderPath);
+        FolderOrder = folders;
+        Save();
+        return true;
+    }
 
     #region Helper Methods
 
@@ -203,7 +279,7 @@ public class Config : IHostedService
     public ConfigMacro? GetMacro(string macroId)
     {
         // ids never change, so an indexed hit is valid as long as the macro is still at that index
-        var macros = Macros;
+        var macros = Macros ?? [];
         if (_macroIndex.TryGetValue(macroId, out var i) && i < macros.Count && macros[i].Id == macroId)
             return macros[i];
 
@@ -249,9 +325,8 @@ public class Config : IHostedService
     public IEnumerable<ConfigMacro> SearchMacros(string searchText, bool caseSensitive = false)
     {
         var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        return Macros.Where(m =>
-            m.Name.Contains(searchText, comparison) ||
-            m.Content.Contains(searchText, comparison));
+        return (Macros ?? []).Where(m => m is not null &&
+            (m.Name.Contains(searchText, comparison) || m.Content.Contains(searchText, comparison)));
     }
 
     /// <summary>
@@ -285,6 +360,13 @@ public class Config : IHostedService
 
         foreach (var macro in GetMacrosInFolder(oldFolderPath).ToList())
             macro.FolderPath = newFolderPath;
+
+        if (FolderOrder is not null)
+        {
+            var folderIndex = FolderOrder.IndexOf(oldFolderPath);
+            if (folderIndex >= 0)
+                FolderOrder[folderIndex] = newFolderPath;
+        }
 
         Save();
     }
