@@ -191,9 +191,9 @@ public class Config : IHostedService
     /// <summary>
     /// Gets all macros in a specific folder.
     /// </summary>
-    public IEnumerable<ConfigMacro> GetMacrosInFolder(string folderPath) => (Macros ?? [])
+    public IEnumerable<ConfigMacro> GetMacrosInFolder(string folderPath) => Macros
         .Select((macro, index) => (macro, index))
-        .Where(entry => entry.macro is not null && entry.macro.FolderPath == folderPath)
+        .Where(entry => entry.macro.FolderPath == folderPath)
         .OrderBy(entry => entry.macro.SortOrder ?? int.MaxValue)
         .ThenBy(entry => entry.index)
         .Select(entry => entry.macro);
@@ -203,20 +203,10 @@ public class Config : IHostedService
     /// </summary>
     public IEnumerable<string> GetFolderPaths()
     {
-        var folders = (Macros ?? [])
-            .Where(macro => macro is not null)
-            .Select(macro => macro.FolderPath)
-            .Where(folder => !string.IsNullOrEmpty(folder))
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-
-        // Config files from older versions may omit this list, explicitly store null,
-        // or contain duplicate entries. Keep the first valid position without mutating it.
+        var folders = Macros.Select(macro => macro.FolderPath).Where(folder => !string.IsNullOrEmpty(folder)).Distinct(StringComparer.Ordinal).ToList();
         var order = new Dictionary<string, int>(StringComparer.Ordinal);
-        if (FolderOrder is not null)
-            for (var i = 0; i < FolderOrder.Count; i++)
-                if (!string.IsNullOrEmpty(FolderOrder[i]))
-                    order.TryAdd(FolderOrder[i], i);
+        for (var i = 0; i < FolderOrder.Count; i++)
+            order.TryAdd(FolderOrder[i], i);
 
         return folders.OrderBy(f => order.TryGetValue(f, out var index) ? index : int.MaxValue)
             .ThenBy(f => f, StringComparer.Ordinal);
@@ -231,7 +221,7 @@ public class Config : IHostedService
 
         var sourceFolder = macro.FolderPath;
         var source = GetMacrosInFolder(sourceFolder).ToList();
-        var destination = sourceFolder == destinationFolder ? source : GetMacrosInFolder(destinationFolder).ToList();
+        var destination = sourceFolder == destinationFolder ? source : [.. GetMacrosInFolder(destinationFolder)];
         var sourceIndex = source.IndexOf(macro);
         if (sourceFolder == destinationFolder && sourceIndex >= 0 && sourceIndex < destinationIndex)
             destinationIndex--;
@@ -279,7 +269,7 @@ public class Config : IHostedService
     public ConfigMacro? GetMacro(string macroId)
     {
         // ids never change, so an indexed hit is valid as long as the macro is still at that index
-        var macros = Macros ?? [];
+        var macros = Macros;
         if (_macroIndex.TryGetValue(macroId, out var i) && i < macros.Count && macros[i].Id == macroId)
             return macros[i];
 
@@ -300,9 +290,7 @@ public class Config : IHostedService
     /// Gets a macro by its name, optionally in a specific folder.
     /// </summary>
     public ConfigMacro? GetMacroByName(string name, string? folderPath = null)
-        => Macros.FirstOrDefault(m =>
-            m.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
-            (folderPath == null || m.FolderPath == folderPath));
+        => Macros.FirstOrDefault(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && (folderPath == null || m.FolderPath == folderPath));
 
     /// <summary>
     /// Validates if a macro name is valid for the given folder.
@@ -325,8 +313,7 @@ public class Config : IHostedService
     public IEnumerable<ConfigMacro> SearchMacros(string searchText, bool caseSensitive = false)
     {
         var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        return (Macros ?? []).Where(m => m is not null &&
-            (m.Name.Contains(searchText, comparison) || m.Content.Contains(searchText, comparison)));
+        return Macros.Where(m => m.Name.Contains(searchText, comparison) || m.Content.Contains(searchText, comparison));
     }
 
     /// <summary>
@@ -361,12 +348,9 @@ public class Config : IHostedService
         foreach (var macro in GetMacrosInFolder(oldFolderPath).ToList())
             macro.FolderPath = newFolderPath;
 
-        if (FolderOrder is not null)
-        {
-            var folderIndex = FolderOrder.IndexOf(oldFolderPath);
-            if (folderIndex >= 0)
-                FolderOrder[folderIndex] = newFolderPath;
-        }
+        var folderIndex = FolderOrder.IndexOf(oldFolderPath);
+        if (folderIndex >= 0)
+            FolderOrder[folderIndex] = newFolderPath;
 
         Save();
     }

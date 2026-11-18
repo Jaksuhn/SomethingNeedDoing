@@ -16,7 +16,6 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
     private static readonly byte[] DragPayloadMarker = [1];
     private string _draggedMacroId = string.Empty;
     private string _draggedFolderPath = string.Empty;
-    private bool _reportedNullMacroEntries;
 
     private static class UiConstants
     {
@@ -128,53 +127,19 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
     {
         try
         {
-            if (C.Macros is null)
-            {
-                FrameworkLogger.Error("Config.Macros is null; folder data was left untouched and cannot be displayed");
-                ImGui.TextColored(ImGuiColors.DalamudRed, "Macro configuration is unavailable; see the plugin log");
-                return;
-            }
-
-            if (!_reportedNullMacroEntries && C.Macros.Any(macro => macro is null))
-            {
-                FrameworkLogger.Warning("Config.Macros contains null entries; those entries are skipped for display and were not removed");
-                _reportedNullMacroEntries = true;
-            }
-
             var folders = C.GetFolderPaths().ToList();
-
             var rootMacros = C.GetMacrosInFolder(string.Empty).ToList();
             if (rootMacros.Count != 0)
             {
                 foreach (var macro in rootMacros)
-                {
-                    try
-                    {
-                        DrawMacroTreeNode(macro, false, string.Empty);
-                    }
-                    catch (Exception ex)
-                    {
-                        FrameworkLogger.Error(ex, $"Failed to draw root macro '{macro.Id}'");
-                        ImGui.TextColored(ImGuiColors.DalamudRed, $"Macro '{macro.Name}' could not be displayed");
-                    }
-                }
+                    DrawMacroTreeNode(macro, false, string.Empty);
 
                 if (folders.Count != 0)
                     ImGui.Separator();
             }
 
             for (var i = 0; i < folders.Count; i++)
-            {
-                try
-                {
-                    DrawFolderNode(folders[i], i);
-                }
-                catch (Exception ex)
-                {
-                    FrameworkLogger.Error(ex, $"Failed to draw folder '{folders[i]}' at index {i}");
-                    ImGui.TextColored(ImGuiColors.DalamudRed, $"Folder '{folders[i]}' could not be displayed");
-                }
-            }
+                DrawFolderNode(folders[i], i);
         }
         catch (Exception ex)
         {
@@ -236,17 +201,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             }
 
             foreach (var macro in macros)
-            {
-                try
-                {
-                    DrawMacroTreeNode(macro, false, folderPath);
-                }
-                catch (Exception ex)
-                {
-                    FrameworkLogger.Error(ex, $"Failed to draw macro '{macro.Id}' in folder '{folderPath}'");
-                    ImGui.TextColored(ImGuiColors.DalamudRed, $"Macro '{macro.Name}' could not be displayed");
-                }
-            }
+                DrawMacroTreeNode(macro, false, folderPath);
         }
         catch (Exception ex)
         {
@@ -572,7 +527,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
 
         for (var i = 0; i < rootMacros.Count; i++)
             rootMacros[i].SortOrder = i;
-        C.FolderOrder?.RemoveAll(folder => folder == folderPath);
+        C.FolderOrder.RemoveAll(folder => folder == folderPath);
 
         C.Save();
 
