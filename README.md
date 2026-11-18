@@ -25,3 +25,7 @@ Various random functions and scripts
 #### Minnu's collection
 https://github.com/MinnuVerse/SnD  
 CrafterScrips (Crafting & TurningIn), Daily Allied Quests, CosmicFishing and more.
+
+#### GetItDoneKupo
+https://github.com/HeyKupo/GetItDoneKupo
+Heaven-on-High Accursed Hoard farm and probably more to come.
