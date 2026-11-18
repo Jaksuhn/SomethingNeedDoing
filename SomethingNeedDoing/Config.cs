@@ -186,7 +186,13 @@ public class Config : IHostedService
     /// <summary>Explicit display order for the flat folder list. Missing entries use the legacy alphabetical order.</summary>
     public List<string> FolderOrder { get; set; } = [];
 
-    public void Save() => EzConfig.Save();
+    public void Save()
+    {
+        // drop order entries for folders that don't exist/no longer have macros
+        var folders = Macros.Select(m => m.FolderPath).ToHashSet(StringComparer.Ordinal);
+        FolderOrder.RemoveAll(f => !folders.Contains(f));
+        EzConfig.Save();
+    }
 
     /// <summary>
     /// Gets all macros in a specific folder.
