@@ -121,13 +121,12 @@ public class AutoRetainer : IPC
     public OfflineCharacterDataWrapper GetOfflineCharacterData(ulong cid) => new(_api.GetOfflineCharacterData(cid));
 
     [LuaFunction(
-        description: "Gets offline free company data for a specific free company ID",
+        description: "Gets Free Company data for a specific Free Company ID",
         parameterDescriptions: ["fcid"])]
-    [Changelog("15.8")]
-    public OfflineFCDataWrapper? GetOfflineFCData(ulong fcid)
+    public FCDataWrapper? GetFCData(ulong fcid)
     {
         var fcData = _api.Config.FCData;
-        return fcData.TryGetValue(fcid, out var data) ? new OfflineFCDataWrapper(data) : null;
+        return fcData.TryGetValue(fcid, out var data) ? new FCDataWrapper(data) : null;
     }
 
     [LuaFunction(description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration", parameterDescriptions: ["boolean"])]
@@ -137,7 +136,7 @@ public class AutoRetainer : IPC
     public class OfflineCharacterDataWrapper(OfflineCharacterData data) : IWrapper
     {
         [LuaDocs][Changelog("12.19")] public ulong CID => data.CID;
-        [LuaDocs][Changelog("15.8")] public ulong FreeCompanyId => data.FCID;
+        [LuaDocs] public ulong FCID => data.FCID;
         [LuaDocs][Changelog("12.19")] public string Name => data.Name;
         [LuaDocs][Changelog("12.19")] public string World => data.World;
         [LuaDocs][Changelog("12.19")] public bool Enabled => data.Enabled;
@@ -156,13 +155,15 @@ public class AutoRetainer : IPC
         [LuaDocs][Changelog("13.3")] public List<short> ClassJobLevelArray => [.. data.ClassJobLevelArray];
     }
 
-    public class OfflineFCDataWrapper(FCData data) : IWrapper
+    public class FCDataWrapper(FCData data) : IWrapper
     {
-        [LuaDocs][Changelog("15.8")] public string Name => data.Name;
-        [LuaDocs][Changelog("15.8")] public long Gil => data.Gil;
-        [LuaDocs][Changelog("15.8")] public long FCPoints => data.FCPoints;
-        [LuaDocs][Changelog("15.8")] public int Rank => data.Rank;
-        [LuaDocs][Changelog("15.8")] public ulong HolderCID => data.HolderChara;
+        [LuaDocs] public string Name => data.Name;
+        [LuaDocs] public long Gil => data.Gil;
+        [LuaDocs] public long FCPoints => data.FCPoints;
+        [LuaDocs] public int Rank => data.Rank;
+        [LuaDocs] public ulong HolderChara => data.HolderChara;
+        [LuaDocs] public long LastGilUpdate => data.LastGilUpdate;
+        [LuaDocs] public long FCPointsLastUpdate => data.FCPointsLastUpdate;
     }
 
     public class OfflineRetainerDataWrapper(OfflineRetainerData data) : IWrapper
