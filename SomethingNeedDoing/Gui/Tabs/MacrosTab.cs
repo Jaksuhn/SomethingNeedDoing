@@ -237,7 +237,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
     {
         ImGui.TextColored(ImGuiColors.DalamudViolet, "SEARCH RESULTS");
 
-        var allFolders = C.GetFolderPaths().Where(f => !string.IsNullOrEmpty(f));
+        var allFolders = C.GetFolderPaths();
         var foundAnyFolders = false;
 
         foreach (var folderPath in allFolders)
@@ -454,10 +454,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
                 ImGui.CloseCurrentPopup();
             }
 
-            var folders = C.GetFolderPaths()
-                .Where(f => !string.IsNullOrEmpty(f))
-                .OrderBy(f => f)
-                .ToList();
+            var folders = C.GetFolderPaths().Order().ToList();
 
             if (folders.Any())
             {
@@ -487,7 +484,6 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
         foreach (var macro in C.GetMacrosInFolder(folderPath).ToList())
             macro.FolderPath = string.Empty;
 
-        C.FolderOrder.Remove(folderPath);
         C.Save();
 
         if (_state.SelectedFolderId == folderPath)
