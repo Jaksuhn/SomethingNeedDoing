@@ -183,7 +183,16 @@ public class Config : IHostedService
 
     public List<ConfigMacro> Macros { get; set; } = [];
 
-    public void Save() => EzConfig.Save();
+    /// <summary>Explicit display order for the flat folder list. Missing entries use the legacy alphabetical order.</summary>
+    public List<string> FolderOrder { get; set; } = [];
+
+    public void Save()
+    {
+        // drop order entries for folders that don't exist/no longer have macros
+        var folders = Macros.Select(m => m.FolderPath).ToHashSet(StringComparer.Ordinal);
+        FolderOrder.RemoveAll(f => !folders.Contains(f));
+        EzConfig.Save();
+    }
 
     /// <summary>
     /// Gets all macros in a specific folder.
@@ -193,7 +202,64 @@ public class Config : IHostedService
     /// <summary>
     /// Gets all folder paths.
     /// </summary>
-    public IEnumerable<string> GetFolderPaths() => Macros.Select(m => m.FolderPath).Distinct();
+    public IEnumerable<string> GetFolderPaths()
+    {
+        var folders = Macros.Select(macro => macro.FolderPath).Where(folder => !string.IsNullOrEmpty(folder)).Distinct(StringComparer.Ordinal).ToList();
+        var order = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < FolderOrder.Count; i++)
+            order.TryAdd(FolderOrder[i], i);
+
+        return folders.OrderBy(f => order.TryGetValue(f, out var index) ? index : int.MaxValue)
+            .ThenBy(f => f, StringComparer.Ordinal);
+    }
+
+    /// <summary>Moves one macro to a folder and position without changing its content or settings.</summary>
+    public bool MoveMacro(string macroId, string destinationFolder, int destinationIndex)
+    {
+        if (GetMacro(macroId) is not { } macro)
+            return false;
+
+        var sameFolder = macro.FolderPath == destinationFolder;
+        var siblings = GetMacrosInFolder(destinationFolder).ToList();
+        if (sameFolder)
+        {
+            var sourceIndex = siblings.IndexOf(macro);
+            if (destinationIndex < 0) return false;
+            if (sourceIndex < destinationIndex) destinationIndex--;
+            if (sourceIndex == destinationIndex) return false;
+            siblings.RemoveAt(sourceIndex);
+        }
+
+        var slot = destinationIndex < 0 ? siblings.Count : Math.Clamp(destinationIndex, 0, siblings.Count);
+        Macros.Remove(macro);
+        macro.FolderPath = destinationFolder;
+        var insertAt = slot < siblings.Count ? Macros.IndexOf(siblings[slot])
+            : siblings.Count > 0 ? Macros.IndexOf(siblings[^1]) + 1
+            : Macros.Count;
+        Macros.Insert(insertAt, macro);
+
+        Save();
+        return true;
+    }
+
+    /// <summary>Moves a folder within the flat folder list.</summary>
+    public bool MoveFolder(string folderPath, int destinationIndex)
+    {
+        var folders = GetFolderPaths().ToList();
+        var sourceIndex = folders.IndexOf(folderPath);
+        if (sourceIndex < 0 || destinationIndex < 0 || destinationIndex > folders.Count)
+            return false;
+
+        folders.RemoveAt(sourceIndex);
+        if (sourceIndex < destinationIndex)
+            destinationIndex--;
+        if (sourceIndex == destinationIndex)
+            return false;
+        folders.Insert(Math.Clamp(destinationIndex, 0, folders.Count), folderPath);
+        FolderOrder = folders;
+        Save();
+        return true;
+    }
 
     #region Helper Methods
 
@@ -224,18 +290,13 @@ public class Config : IHostedService
     /// Gets a macro by its name, optionally in a specific folder.
     /// </summary>
     public ConfigMacro? GetMacroByName(string name, string? folderPath = null)
-        => Macros.FirstOrDefault(m =>
-            m.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
-            (folderPath == null || m.FolderPath == folderPath));
+        => Macros.FirstOrDefault(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && (folderPath == null || m.FolderPath == folderPath));
 
     /// <summary>
     /// Validates if a macro name is valid for the given folder.
     /// </summary>
     public bool IsValidMacroName(string name, string? excludeMacroId = null)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return false;
-        return !Macros.Any(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && m.Id != excludeMacroId);
-    }
+        => !string.IsNullOrWhiteSpace(name) && !Macros.Any(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && m.Id != excludeMacroId);
 
     /// <summary>
     /// Gets the number of macros in a folder.
@@ -249,9 +310,7 @@ public class Config : IHostedService
     public IEnumerable<ConfigMacro> SearchMacros(string searchText, bool caseSensitive = false)
     {
         var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        return Macros.Where(m =>
-            m.Name.Contains(searchText, comparison) ||
-            m.Content.Contains(searchText, comparison));
+        return Macros.Where(m => m.Name.Contains(searchText, comparison) || m.Content.Contains(searchText, comparison));
     }
 
     /// <summary>
@@ -285,6 +344,10 @@ public class Config : IHostedService
 
         foreach (var macro in GetMacrosInFolder(oldFolderPath).ToList())
             macro.FolderPath = newFolderPath;
+
+        var folderIndex = FolderOrder.IndexOf(oldFolderPath);
+        if (folderIndex >= 0)
+            FolderOrder[folderIndex] = newFolderPath;
 
         Save();
     }
