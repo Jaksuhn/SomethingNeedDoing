@@ -1,3 +1,4 @@
+using System.Text;
 using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility;
@@ -13,9 +14,6 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
 {
     private const string MacroDragPayload = "SND_MACRO_MOVE";
     private const string FolderDragPayload = "SND_FOLDER_MOVE";
-    private static readonly byte[] DragPayloadMarker = [1];
-    private string _draggedMacroId = string.Empty;
-    private string _draggedFolderPath = string.Empty;
 
     private static class UiConstants
     {
@@ -305,8 +303,7 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
     {
         if (ImGui.BeginDragDropSource())
         {
-            _draggedMacroId = macro.Id;
-            ImGui.SetDragDropPayload(MacroDragPayload, DragPayloadMarker);
+            ImGui.SetDragDropPayload(MacroDragPayload, Encoding.UTF8.GetBytes(macro.Id));
             ImGui.Text($"Move {macro.Name}");
             ImGui.EndDragDropSource();
         }
@@ -320,34 +317,22 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
         var before = ImGui.GetIO().MousePos.Y < (rectMin.Y + rectMax.Y) * 0.5f;
         DrawDropIndicator(rectMin, rectMax, before);
 
-        if (!payload.IsNull && payload.DataSize > 0 && ImGui.IsMouseReleased(ImGuiMouseButton.Left) && !string.IsNullOrEmpty(_draggedMacroId) && _draggedMacroId != macro.Id)
+        if (!payload.IsNull && ReadPayload(payload) is var draggedId && draggedId != macro.Id)
         {
-            var macros = C.GetMacrosInFolder(folderPath).ToList();
-            var targetIndex = macros.FindIndex(m => m.Id == macro.Id);
+            var targetIndex = C.GetMacrosInFolder(folderPath).ToList().FindIndex(m => m.Id == macro.Id);
             if (targetIndex >= 0)
-            {
-                var insertAt = targetIndex + (before ? 0 : 1);
-                var sourceFolder = C.GetMacro(_draggedMacroId)?.FolderPath;
-                if (C.MoveMacro(_draggedMacroId, folderPath, insertAt))
-                {
-                    if (_state.SelectedFolderId == sourceFolder)
-                        _state.SelectedFolderId = folderPath;
-                    _state.ExpandedFolders.Add(folderPath);
-                }
-            }
-            _draggedMacroId = string.Empty;
+                MoveMacroToFolder(draggedId, folderPath, targetIndex + (before ? 0 : 1));
         }
 
         ImGui.EndDragDropTarget();
     }
 
-    private void HandleFolderDragSource(string folderPath)
+    private static void HandleFolderDragSource(string folderPath)
     {
         if (!ImGui.BeginDragDropSource())
             return;
 
-        _draggedFolderPath = folderPath;
-        ImGui.SetDragDropPayload(FolderDragPayload, DragPayloadMarker);
+        ImGui.SetDragDropPayload(FolderDragPayload, Encoding.UTF8.GetBytes(folderPath));
         ImGui.Text($"Move folder {folderPath}");
         ImGui.EndDragDropSource();
     }
@@ -358,32 +343,32 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             return;
 
         var macroPayload = ImGui.AcceptDragDropPayload(MacroDragPayload);
-        if (!macroPayload.IsNull && macroPayload.DataSize > 0 && ImGui.IsMouseReleased(ImGuiMouseButton.Left) && !string.IsNullOrEmpty(_draggedMacroId))
-        {
-            var sourceFolder = C.GetMacro(_draggedMacroId)?.FolderPath;
-            C.MoveMacro(_draggedMacroId, folderPath, -1);
-            if (_state.SelectedFolderId == sourceFolder)
-                _state.SelectedFolderId = folderPath;
-            _state.ExpandedFolders.Add(folderPath);
-            _draggedMacroId = string.Empty;
-        }
+        if (!macroPayload.IsNull)
+            MoveMacroToFolder(ReadPayload(macroPayload), folderPath, -1);
 
         var folderPayload = ImGui.AcceptDragDropPayload(FolderDragPayload);
         var rectMin = ImGui.GetItemRectMin();
         var rectMax = ImGui.GetItemRectMax();
         var before = ImGui.GetIO().MousePos.Y < (rectMin.Y + rectMax.Y) * 0.5f;
         DrawDropIndicator(rectMin, rectMax, before);
-        if (!folderPayload.IsNull && folderPayload.DataSize > 0 && ImGui.IsMouseReleased(ImGuiMouseButton.Left) && !string.IsNullOrEmpty(_draggedFolderPath))
-        {
-            var source = C.GetFolderPaths().ToList().IndexOf(_draggedFolderPath);
-            var target = folderIndex + (before ? 0 : 1);
-            if (source >= 0)
-                C.MoveFolder(_draggedFolderPath, target);
-            _draggedFolderPath = string.Empty;
-        }
+        if (!folderPayload.IsNull)
+            C.MoveFolder(ReadPayload(folderPayload), folderIndex + (before ? 0 : 1));
 
         ImGui.EndDragDropTarget();
     }
+
+    private void MoveMacroToFolder(string macroId, string folderPath, int index = -1)
+    {
+        var sourceFolder = C.GetMacro(macroId)?.FolderPath;
+        if (!C.MoveMacro(macroId, folderPath, index))
+            return;
+
+        if (_state.SelectedFolderId == sourceFolder)
+            _state.SelectedFolderId = folderPath;
+        _state.ExpandedFolders.Add(folderPath);
+    }
+
+    private static unsafe string ReadPayload(ImGuiPayloadPtr payload) => Encoding.UTF8.GetString((byte*)payload.Data, payload.DataSize);
 
     private static void DrawDropIndicator(Vector2 min, Vector2 max, bool before)
     {
@@ -494,22 +479,6 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
             ImGui.Separator();
             if (ImGui.MenuItem("Create new folder..."))
                 TextInputModal.OpenCreateFolder();
-        }
-    }
-
-    private void MoveMacroToFolder(string macroId, string folderPath)
-    {
-        if (C.GetMacro(macroId) is ConfigMacro configMacro)
-        {
-            var oldFolder = configMacro.FolderPath;
-            if (oldFolder == folderPath) return;
-
-            C.MoveMacro(macroId, folderPath, -1);
-
-            if (_state.SelectedFolderId == oldFolder)
-                _state.SelectedFolderId = folderPath;
-
-            _state.ExpandedFolders.Add(folderPath);
         }
     }
 
