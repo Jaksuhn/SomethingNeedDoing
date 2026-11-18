@@ -120,15 +120,14 @@ public class AutoRetainer : IPC
     [Changelog("12.19")]
     public OfflineCharacterDataWrapper GetOfflineCharacterData(ulong cid) => new(_api.GetOfflineCharacterData(cid));
 
-    [LuaFunction(
-        description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration",
-        parameterDescriptions: ["boolean"])]
+    [LuaFunction(description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration", parameterDescriptions: ["boolean"])]
     [Changelog("13.3")]
     public void SetSuppressed(bool suppressed) => _api.Suppressed = suppressed;
 
     public class OfflineCharacterDataWrapper(OfflineCharacterData data) : IWrapper
     {
         [LuaDocs][Changelog("12.19")] public ulong CID => data.CID;
+        [LuaDocs][Changelog("15.8")] public ulong FreeCompanyId => data.FCID;
         [LuaDocs][Changelog("12.19")] public string Name => data.Name;
         [LuaDocs][Changelog("12.19")] public string World => data.World;
         [LuaDocs][Changelog("12.19")] public bool Enabled => data.Enabled;
