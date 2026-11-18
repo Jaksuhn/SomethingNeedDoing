@@ -515,20 +515,10 @@ public class MacrosTab(IMacroScheduler scheduler, MacroEditor macroEditor, GitMa
 
     private void DeleteFolder(string folderPath)
     {
-        var rootMacros = C.GetMacrosInFolder(string.Empty).ToList();
         foreach (var macro in C.GetMacrosInFolder(folderPath).ToList())
-        {
-            if (macro is ConfigMacro configMacro)
-            {
-                configMacro.FolderPath = string.Empty;
-                rootMacros.Add(configMacro);
-            }
-        }
+            macro.FolderPath = string.Empty;
 
-        for (var i = 0; i < rootMacros.Count; i++)
-            rootMacros[i].SortOrder = i;
-        C.FolderOrder.RemoveAll(folder => folder == folderPath);
-
+        C.FolderOrder.Remove(folderPath);
         C.Save();
 
         if (_state.SelectedFolderId == folderPath)
