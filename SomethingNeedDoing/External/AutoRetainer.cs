@@ -123,6 +123,7 @@ public class AutoRetainer : IPC
     [LuaFunction(
         description: "Gets Free Company data for a specific Free Company ID",
         parameterDescriptions: ["fcid"])]
+    [Changelog(ChangelogAttribute.Unreleased)]
     public FCDataWrapper? GetFCData(ulong fcid)
     {
         var fcData = _api.Config.FCData;
@@ -136,7 +137,7 @@ public class AutoRetainer : IPC
     public class OfflineCharacterDataWrapper(OfflineCharacterData data) : IWrapper
     {
         [LuaDocs][Changelog("12.19")] public ulong CID => data.CID;
-        [LuaDocs] public ulong FCID => data.FCID;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong FCID => data.FCID;
         [LuaDocs][Changelog("12.19")] public string Name => data.Name;
         [LuaDocs][Changelog("12.19")] public string World => data.World;
         [LuaDocs][Changelog("12.19")] public bool Enabled => data.Enabled;
@@ -157,13 +158,13 @@ public class AutoRetainer : IPC
 
     public class FCDataWrapper(FCData data) : IWrapper
     {
-        [LuaDocs] public string Name => data.Name;
-        [LuaDocs] public long Gil => data.Gil;
-        [LuaDocs] public long FCPoints => data.FCPoints;
-        [LuaDocs] public int Rank => data.Rank;
-        [LuaDocs] public ulong HolderChara => data.HolderChara;
-        [LuaDocs] public long LastGilUpdate => data.LastGilUpdate;
-        [LuaDocs] public long FCPointsLastUpdate => data.FCPointsLastUpdate;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public string Name => data.Name;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long Gil => data.Gil;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPoints => data.FCPoints;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public int Rank => data.Rank;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong HolderChara => data.HolderChara;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long LastGilUpdate => data.LastGilUpdate;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPointsLastUpdate => data.FCPointsLastUpdate;
     }
 
     public class OfflineRetainerDataWrapper(OfflineRetainerData data) : IWrapper
