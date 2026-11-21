@@ -124,11 +124,7 @@ public class AutoRetainer : IPC
         description: "Gets Free Company data for a specific Free Company ID",
         parameterDescriptions: ["fcid"])]
     [Changelog(ChangelogAttribute.Unreleased)]
-    public FCDataWrapper? GetFCData(ulong fcid)
-    {
-        var fcData = _api.Config.FCData;
-        return fcData.TryGetValue(fcid, out var data) ? new FCDataWrapper(data) : null;
-    }
+    public FCDataWrapper? GetFCData(ulong fcid) => _api.Config.FCData.TryGetValue(fcid, out var data) ? new FCDataWrapper(data) : null;
 
     [LuaFunction(
         description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration",
