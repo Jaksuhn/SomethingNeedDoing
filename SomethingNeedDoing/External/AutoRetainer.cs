@@ -156,13 +156,15 @@ public class AutoRetainer : IPC
 
     public class FCDataWrapper(FCData data) : IWrapper
     {
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong ID => data.ID;
         [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public string Name => data.Name;
         [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long Gil => data.Gil;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPoints => data.FCPoints;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public int Rank => data.Rank;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong HolderChara => data.HolderChara;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public bool GilCountsTowardsChara => data.GilCountsTowardsChara;
         [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long LastGilUpdate => data.LastGilUpdate;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPoints => data.FCPoints;
         [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPointsLastUpdate => data.FCPointsLastUpdate;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong HolderChara => data.HolderChara;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public int Rank => data.Rank;
     }
 
     public class OfflineRetainerDataWrapper(OfflineRetainerData data) : IWrapper
