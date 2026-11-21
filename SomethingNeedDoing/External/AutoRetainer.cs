@@ -130,7 +130,9 @@ public class AutoRetainer : IPC
         return fcData.TryGetValue(fcid, out var data) ? new FCDataWrapper(data) : null;
     }
 
-    [LuaFunction(description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration", parameterDescriptions: ["boolean"])]
+    [LuaFunction(
+        description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration",
+        parameterDescriptions: ["boolean"])]
     [Changelog("13.3")]
     public void SetSuppressed(bool suppressed) => _api.Suppressed = suppressed;
 
