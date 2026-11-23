@@ -43,6 +43,7 @@ public unsafe class InstancedContentModule : LuaModuleBase
     [LuaFunction][Changelog("12.47")] public void LeaveCurrentContent() => EventFramework.LeaveCurrentContent(true);
 
     [LuaFunction] public OceanFishingWrapper OceanFishing => new();
+    [LuaFunction][Changelog("15.15")] public DeepDungeonWrapper DeepDungeon => new();
     [LuaFunction] public OccultCrescentWrapper OccultCrescent => new(this);
 
     public class OccultCrescentWrapper(InstancedContentModule parentModule) : IWrapper
