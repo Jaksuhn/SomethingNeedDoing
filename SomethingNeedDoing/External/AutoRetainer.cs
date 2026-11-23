@@ -123,7 +123,7 @@ public class AutoRetainer : IPC
     [LuaFunction(
         description: "Gets Free Company data for a specific Free Company ID",
         parameterDescriptions: ["fcid"])]
-    [Changelog(ChangelogAttribute.Unreleased)]
+    [Changelog("15.15")]
     public FCDataWrapper? GetFCData(ulong fcid) => _api.Config.FCData.TryGetValue(fcid, out var data) ? new FCDataWrapper(data) : null;
 
     [LuaFunction(
@@ -135,7 +135,7 @@ public class AutoRetainer : IPC
     public class OfflineCharacterDataWrapper(OfflineCharacterData data) : IWrapper
     {
         [LuaDocs][Changelog("12.19")] public ulong CID => data.CID;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong FCID => data.FCID;
+        [LuaDocs][Changelog("15.15")] public ulong FCID => data.FCID;
         [LuaDocs][Changelog("12.19")] public string Name => data.Name;
         [LuaDocs][Changelog("12.19")] public string World => data.World;
         [LuaDocs][Changelog("12.19")] public bool Enabled => data.Enabled;
@@ -156,15 +156,15 @@ public class AutoRetainer : IPC
 
     public class FCDataWrapper(FCData data) : IWrapper
     {
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong ID => data.ID;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public string Name => data.Name;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long Gil => data.Gil;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public bool GilCountsTowardsChara => data.GilCountsTowardsChara;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long LastGilUpdate => data.LastGilUpdate;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPoints => data.FCPoints;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPointsLastUpdate => data.FCPointsLastUpdate;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong HolderChara => data.HolderChara;
-        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public int Rank => data.Rank;
+        [LuaDocs][Changelog("15.15")] public ulong ID => data.ID;
+        [LuaDocs][Changelog("15.15")] public string Name => data.Name;
+        [LuaDocs][Changelog("15.15")] public long Gil => data.Gil;
+        [LuaDocs][Changelog("15.15")] public bool GilCountsTowardsChara => data.GilCountsTowardsChara;
+        [LuaDocs][Changelog("15.15")] public long LastGilUpdate => data.LastGilUpdate;
+        [LuaDocs][Changelog("15.15")] public long FCPoints => data.FCPoints;
+        [LuaDocs][Changelog("15.15")] public long FCPointsLastUpdate => data.FCPointsLastUpdate;
+        [LuaDocs][Changelog("15.15")] public ulong HolderChara => data.HolderChara;
+        [LuaDocs][Changelog("15.15")] public int Rank => data.Rank;
     }
 
     public class OfflineRetainerDataWrapper(OfflineRetainerData data) : IWrapper
