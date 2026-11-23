@@ -121,6 +121,12 @@ public class AutoRetainer : IPC
     public OfflineCharacterDataWrapper GetOfflineCharacterData(ulong cid) => new(_api.GetOfflineCharacterData(cid));
 
     [LuaFunction(
+        description: "Gets Free Company data for a specific Free Company ID",
+        parameterDescriptions: ["fcid"])]
+    [Changelog(ChangelogAttribute.Unreleased)]
+    public FCDataWrapper? GetFCData(ulong fcid) => _api.Config.FCData.TryGetValue(fcid, out var data) ? new FCDataWrapper(data) : null;
+
+    [LuaFunction(
         description: "Sets suppressed state in which AutoRetainer will not perform any actions regardless of configuration",
         parameterDescriptions: ["boolean"])]
     [Changelog("13.3")]
@@ -129,6 +135,7 @@ public class AutoRetainer : IPC
     public class OfflineCharacterDataWrapper(OfflineCharacterData data) : IWrapper
     {
         [LuaDocs][Changelog("12.19")] public ulong CID => data.CID;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong FCID => data.FCID;
         [LuaDocs][Changelog("12.19")] public string Name => data.Name;
         [LuaDocs][Changelog("12.19")] public string World => data.World;
         [LuaDocs][Changelog("12.19")] public bool Enabled => data.Enabled;
@@ -145,6 +152,19 @@ public class AutoRetainer : IPC
         [LuaDocs][Changelog("12.19")] public bool SubsAwaitingProcessing => OfflineSubmarineData.Any(x => x.ReturnTime <= TimeProvider.System.GetUtcNow().ToUnixTimeSeconds());
         [LuaDocs][Changelog("12.19")] public bool AnyAwaitingProcessing => RetainersAwaitingProcessing || SubsAwaitingProcessing;
         [LuaDocs][Changelog("13.3")] public List<short> ClassJobLevelArray => [.. data.ClassJobLevelArray];
+    }
+
+    public class FCDataWrapper(FCData data) : IWrapper
+    {
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong ID => data.ID;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public string Name => data.Name;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long Gil => data.Gil;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public bool GilCountsTowardsChara => data.GilCountsTowardsChara;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long LastGilUpdate => data.LastGilUpdate;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPoints => data.FCPoints;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public long FCPointsLastUpdate => data.FCPointsLastUpdate;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public ulong HolderChara => data.HolderChara;
+        [LuaDocs][Changelog(ChangelogAttribute.Unreleased)] public int Rank => data.Rank;
     }
 
     public class OfflineRetainerDataWrapper(OfflineRetainerData data) : IWrapper
