@@ -23,6 +23,7 @@ public unsafe class PlayerModule : LuaModuleBase
 
     [LuaFunction] public EntityWrapper? Entity => Player.Object is { } player ? new(player) : null;
     [LuaFunction] public FreeCompanyWrapper FreeCompany => new();
+    [LuaFunction][Changelog("15.16")] public AchievementsWrapper Achievements => new();
 
     [LuaFunction] public JobWrapper Job => new(Svc.PlayerState.ClassJob.RowId);
     [LuaFunction] public JobWrapper GetJob(uint classJobId) => new(classJobId);
