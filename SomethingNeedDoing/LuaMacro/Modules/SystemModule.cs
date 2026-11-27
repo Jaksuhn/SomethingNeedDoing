@@ -7,5 +7,5 @@ public unsafe class SystemModule : LuaModuleBase
     [LuaFunction] public void FlashIcon() => WindowFlash.Flash();
     [LuaFunction][Changelog("12.15")] public string GetClipboardText() => ImGui.GetClipboardText();
     [LuaFunction][Changelog("12.15")] public void SetClipboardText(string text) => ImGui.SetClipboardText(text);
-    [LuaFunction][Changelog(ChangelogAttribute.Unreleased)] public int GetProcessId() => Environment.ProcessId;
+    [LuaFunction][Changelog("15.17")] public int GetProcessId() => Environment.ProcessId;
 }
