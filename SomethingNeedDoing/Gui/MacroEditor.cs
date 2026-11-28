@@ -24,6 +24,7 @@ public partial class MacroEditor
     private readonly CodeEditor _editor;
     private readonly MacroSettingsSection _settingsSection;
     private UpdateState _updateState = UpdateState.Unknown;
+    private string? _updateStateMacroId;
     private bool _showSettings;
 
     private enum UpdateState
@@ -138,6 +139,15 @@ public partial class MacroEditor
 
         if (macro is ConfigMacro { IsGitMacro: true } configMacro)
         {
+            // the indicator belongs to one macro: when another one is selected, show its last check result
+            if (_updateStateMacroId != configMacro.Id)
+            {
+                _updateStateMacroId = configMacro.Id;
+                _updateState = configMacro.GitInfo.HasUpdate ? UpdateState.Available
+                    : configMacro.GitInfo.LastUpdateCheck != default ? UpdateState.None
+                    : UpdateState.Unknown;
+            }
+
             ImGui.SameLine();
             var (updateIndicator, updateColor, tooltip) = _updateState switch
             {
@@ -148,21 +158,25 @@ public partial class MacroEditor
 
             if (ImGuiUtils.IconButtonWithNotification(FontAwesomeIcon.Bell, updateIndicator, updateColor, tooltip))
             {
-                if (_updateState == UpdateState.Available)
-                    Task.Run(async () => await _gitManager.UpdateMacro(configMacro));
-                else
-                    Task.Run(async () =>
+                var update = _updateState == UpdateState.Available;
+                Task.Run(async () =>
+                {
+                    UpdateState state;
+                    try
                     {
-                        try
-                        {
+                        if (update)
+                            await _gitManager.UpdateMacro(configMacro);
+                        else
                             await _gitManager.CheckForUpdates(configMacro);
-                            _updateState = configMacro.GitInfo.HasUpdate ? UpdateState.Available : UpdateState.None;
-                        }
-                        catch
-                        {
-                            _updateState = UpdateState.Unknown;
-                        }
-                    });
+                        state = configMacro.GitInfo.HasUpdate ? UpdateState.Available : UpdateState.None;
+                    }
+                    catch
+                    {
+                        state = UpdateState.Unknown;
+                    }
+                    if (_updateStateMacroId == configMacro.Id) // still the selected macro
+                        _updateState = state;
+                });
             }
         }
     }
